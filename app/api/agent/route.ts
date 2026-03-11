@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 })
     }
 
-    const stream = await runAgent({ message: message.trim(), history, provider, model })
+    const stream = runAgent({ message: message.trim(), history, provider, model })
 
     return new Response(stream, {
       headers: {

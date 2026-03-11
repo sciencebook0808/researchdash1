@@ -2,6 +2,8 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 
 const isPublicRoute = createRouteMatcher([
+  "/sign-in(.*)",
+  "/sign-up(.*)",
   "/access-denied",
   "/api/users(.*)",
 ])
@@ -9,14 +11,14 @@ const isPublicRoute = createRouteMatcher([
 const isApiRoute = createRouteMatcher(["/api(.*)"])
 
 export default clerkMiddleware(async (auth, req) => {
-  // Allow public routes
+  // Allow public routes without authentication
   if (isPublicRoute(req)) return NextResponse.next()
 
-  const { userId } = await auth()
+  // Single auth() call — Clerk v6 caches the result
+  const { userId, redirectToSignIn } = await auth()
 
-  // Not signed in → redirect to Clerk sign-in
+  // Not signed in → redirect to Clerk sign-in (preserves return URL)
   if (!userId && !isApiRoute(req)) {
-    const { redirectToSignIn } = await auth()
     return redirectToSignIn({ returnBackUrl: req.url })
   }
 
@@ -24,5 +26,10 @@ export default clerkMiddleware(async (auth, req) => {
 })
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"],
+  matcher: [
+    // Skip Next.js internals and all static files
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Always run for API routes
+    "/(api|trpc)(.*)",
+  ],
 }
