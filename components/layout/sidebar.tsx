@@ -105,7 +105,6 @@ function NavContent({ onLinkClick }: { onLinkClick?: () => void }) {
           {/* Clerk user button */}
           <div className="flex items-center justify-center w-8 h-8">
             <UserButton
-              signOutOptions={{ redirectUrl: "/sign-in" }}
               appearance={{
                 elements: {
                   avatarBox: "w-7 h-7",
