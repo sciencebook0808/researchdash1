@@ -1,72 +1,79 @@
 /**
- * lib/prisma.ts
- * -------------
- * Singleton Prisma Client for Vercel serverless environments.
- * Prisma ORM v7 — imports from generated output path, NOT @prisma/client.
+ * lib/prisma.ts — Prisma ORM v7 singleton for Vercel + Supabase
+ * ─────────────────────────────────────────────────────────────
+ * THE SSL FIX (prisma/prisma#28344, #29060):
+ *   Official Prisma 7 docs say: `new PrismaPg({ connectionString, ssl: { rejectUnauthorized: false } })`
+ *   BUT on Supabase the connection string contains ?sslmode=require which takes
+ *   precedence and OVERRIDES the ssl object — causing "self-signed cert in chain".
  *
- * Connection string priority (runtime):
- *   1. POSTGRES_PRISMA_URL  — Vercel Postgres / Supabase pooled URL (recommended)
- *   2. POSTGRES_URL         — Vercel Postgres alias
- *   3. DATABASE_URL         — direct connection fallback
+ *   Solution confirmed by prisma/prisma#28344:
+ *   Parse the URL manually → build pg.PoolConfig WITHOUT connectionString
+ *   so our ssl config is the ONLY ssl source.
  *
- * SSL: rejectUnauthorized:false accepts self-signed certs (Supabase, Aiven, Neon).
- * max:1 limits connections per serverless function instance.
- *
- * Note: prisma.config.ts handles the URL for CLI commands (migrations).
- *       This file handles the URL for runtime queries.
+ * Import path: generated/prisma/client (Prisma v7 requires explicit output in schema)
+ * Connection priority: POSTGRES_PRISMA_URL → POSTGRES_URL → DATABASE_URL
  */
 
-// v7: Import from generated output path (defined by `output` in schema.prisma generator)
 import { PrismaClient } from "../generated/prisma/client"
-import { PrismaPg } from "@prisma/adapter-pg"
+import { PrismaPg }     from "@prisma/adapter-pg"
+import type { PoolConfig } from "pg"
 
-function getConnectionString(): string {
+// ─── connection string resolution ───────────────────────────────────────────
+
+function getRawUrl(): string {
   const url =
     process.env.POSTGRES_PRISMA_URL?.trim() ||
-    process.env.POSTGRES_URL?.trim() ||
+    process.env.POSTGRES_URL?.trim()        ||
     process.env.DATABASE_URL?.trim()
 
   if (!url) {
     throw new Error(
-      "No database URL found. Set POSTGRES_PRISMA_URL, POSTGRES_URL, or DATABASE_URL."
+      "No DB URL found. Set POSTGRES_PRISMA_URL, POSTGRES_URL, or DATABASE_URL."
     )
   }
-
-  // Inject sslmode=no-verify if no SSL param is present.
-  // Resolves "self-signed certificate in certificate chain" on Supabase/Aiven/Neon.
-  if (!url.includes("sslmode=") && !url.includes("ssl=")) {
-    const sep = url.includes("?") ? "&" : "?"
-    return `${url}${sep}sslmode=no-verify`
-  }
-
   return url
 }
 
-function createPrismaClient(): PrismaClient {
-  const adapter = new PrismaPg({
-    connectionString: getConnectionString(),
-    // Accept self-signed / chain certificates (Supabase pooler, Aiven, Neon)
+// ─── build PoolConfig without connectionString (bypasses SSL override bug) ──
+
+function buildPoolConfig(): PoolConfig {
+  const raw = getRawUrl()
+  let parsed: URL
+  try {
+    parsed = new URL(raw)
+  } catch {
+    throw new Error(`DATABASE_URL is not a valid URL: ${raw.slice(0, 50)}…`)
+  }
+
+  return {
+    host:     parsed.hostname,
+    port:     parsed.port ? Number(parsed.port) : 5432,
+    user:     decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database: parsed.pathname.replace(/^\//, "") || "postgres",
+    // ssl object is the ONLY ssl source — no connectionString to override it
     ssl: { rejectUnauthorized: false },
-    // One connection per serverless function instance — prevents pool exhaustion
+    // 1 connection per serverless invocation — prevents pool exhaustion
     max: 1,
-  })
+    // Match Prisma v6 defaults (per prisma.io/docs connection-pool guide)
+    connectionTimeoutMillis: 5_000,
+    idleTimeoutMillis:       300_000,
+  }
+}
 
+// ─── singleton ───────────────────────────────────────────────────────────────
+
+function createPrismaClient(): PrismaClient {
   return new PrismaClient({
-    adapter,
-    log:
-      process.env.NODE_ENV === "development"
-        ? ["query", "error", "warn"]
-        : ["error"],
+    adapter: new PrismaPg(buildPoolConfig()),
+    log: process.env.NODE_ENV === "development"
+      ? ["query", "error", "warn"]
+      : ["error"],
   })
 }
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
-}
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined }
 
-export const prisma: PrismaClient =
-  globalForPrisma.prisma ?? createPrismaClient()
+export const prisma: PrismaClient = globalForPrisma.prisma ?? createPrismaClient()
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma
-}
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma

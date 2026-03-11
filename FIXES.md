@@ -1,137 +1,158 @@
-# Bug Fixes — researchdash1
+# Complete Fix Log — researchdash1
 
-## Summary of all changes made
+## Root Cause Summary
 
----
+All runtime failures share one root cause: **Prisma 7 TLS regression**.
 
-### 1. `lib/prisma.ts` — Prisma singleton + SSL fix
+Prisma 7 replaced its Rust query engine with `node-postgres` (`pg`). When you
+pass `{ connectionString, ssl: {...} }` to `PrismaPg`, the connection-string
+URL params (e.g. `?sslmode=require`) take **precedence and silently override**
+the `ssl` object — so `rejectUnauthorized: false` is never applied.
 
-**Problem:** `POSTGRES_PRISMA_URL` was used directly with `!` (hard crash if unset). No SSL fallback logic. Self-signed certificate errors on Supabase/Aiven.
+This causes every DB call to fail with:
+```
+Error opening a TLS connection: self-signed certificate in certificate chain
+```
 
-**Fix:**
-- Connection string priority chain: `POSTGRES_PRISMA_URL` → `POSTGRES_URL` → `DATABASE_URL`
-- Auto-injects `?sslmode=no-verify` if no SSL param is already present
-- Sets `ssl: { rejectUnauthorized: false }` in the `pg` adapter
-- Proper singleton pattern with `globalThis` guard (prevents connection exhaustion on Vercel serverless)
-
----
-
-### 2. `lib/api-auth.ts` — Super admin check order
-
-**Problem:** `requireWriteAuth()` called `prisma.user.findUnique()` BEFORE checking `SUPER_ADMIN_EMAIL`. When the DB was unreachable (TLS error), the entire function threw and returned "Internal server error during auth check" — blocking both the super admin AND AI agents.
-
-**Fix:**
-- Super admin email check runs **FIRST**, before any DB call
-- If email matches `SUPER_ADMIN_EMAIL`, immediately returns `{ ok: true, role: "super_admin" }`
-- DB errors are caught per-block and return `503` instead of `500`
-- Auto-creates a `"user"` role DB record for first-time Clerk logins
+**References:** prisma/prisma#28344, prisma/prisma#29060, prisma/prisma#27760
 
 ---
 
-### 3. `prisma/schema.prisma` — Missing datasource URL
+## Fix 1 — `lib/prisma.ts` (THE CRITICAL FIX)
 
-**Problem:** The `datasource db` block had no `url` field. Prisma couldn't determine which database to connect to for migrations (`prisma migrate deploy`).
+**Problem:** Passing `{ connectionString, ssl: { rejectUnauthorized: false } }`
+to `PrismaPg` doesn't work — connection string params override ssl object.
 
-**Fix:**
+**Fix:** Parse the URL manually and pass a `pg.PoolConfig` **without** a
+`connectionString`. This guarantees our SSL config is the only SSL source.
+
+```typescript
+// BEFORE (broken — ssl object is overridden by ?sslmode= in URL):
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },  // ← silently ignored!
+})
+
+// AFTER (correct — parse URL, pass PoolConfig directly):
+const parsed = new URL(rawUrl)
+const adapter = new PrismaPg({
+  host:     parsed.hostname,
+  port:     parseInt(parsed.port),
+  user:     parsed.username,
+  password: parsed.password,
+  database: parsed.pathname.replace(/^\//, ""),
+  ssl:      { rejectUnauthorized: false },  // ← actually applied
+  max:      1,
+})
+```
+
+---
+
+## Fix 2 — `prisma/schema.prisma`
+
+Prisma 7 removed `url` / `directUrl` from the `datasource` block.
+Added correct `prisma-client` generator with required `output` path.
+
 ```prisma
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]  // required for @prisma/adapter-pg
+  provider = "prisma-client"
+  output   = "../generated/prisma"
 }
-
 datasource db {
-  provider  = "postgresql"
-  url       = env("POSTGRES_PRISMA_URL")
-  directUrl = env("DATABASE_URL")  // used by prisma migrate (bypasses pooler)
+  provider = "postgresql"
+  // No url here — moved to prisma.config.ts
 }
 ```
 
 ---
 
-### 4. `app/api/users/route.ts` — Error handling + logging
+## Fix 3 — `prisma.config.ts`
 
-**Problem:** Errors were swallowed silently. No structured logging for Vercel log inspection.
-
-**Fix:**
-- Structured error logging with `message` and `stack`
-- Super admin role correctly assigned on first user creation (case-insensitive email match)
-- `upsert` no longer overwrites role on update (prevents admin downgrade)
+Added `datasource.url = env("DATABASE_URL")` for Prisma CLI migrations.
 
 ---
 
-### 5. `app/api/users/[id]/route.ts` — Error logging
+## Fix 4 — `lib/api-auth.ts`
 
-**Problem:** Generic `console.error` with no structure.
-
-**Fix:** Structured logging consistent with other routes.
-
----
-
-### 6. `next.config.js` — Vercel serverless bundling
-
-**Problem:** Only `pg-native` was excluded from the bundle. The `pg` package and `@prisma/adapter-pg` need to be treated as external packages too.
-
-**Fix:**
-```js
-serverExternalPackages: ["pg-native", "@prisma/adapter-pg", "pg"]
-```
+Super admin check now runs **BEFORE** any DB query. DB errors return 503,
+not 500, so they are distinguishable from code errors.
 
 ---
 
-### 7. `.env.example` — Complete variable documentation
+## Fix 5 — `app/api/users/me/route.ts`
 
-Added all required environment variables with explanations:
-- `POSTGRES_PRISMA_URL` (primary)
-- `DATABASE_URL` (fallback + migrations)
-- `CLERK_*` keys
-- `SUPER_ADMIN_EMAIL`
-- `GOOGLE_GEMINI_API_KEY`
+Super admin DB record is **always upserted** on login (not just read).
+This ensures every DB-based role check in other APIs sees `"super_admin"`.
+DB fallback still works when DB is unreachable.
 
 ---
 
-## Environment Variables Required on Vercel
+## Fix 6 — `app/api/settings/route.ts`
 
-| Variable | Required | Purpose |
+Added super admin email check before DB role lookup.
+Added DB error fallback (returns safe defaults instead of crashing).
+
+---
+
+## Fix 7 — `app/api/chat-sessions/route.ts`
+
+Added `resolveUser()` helper that checks super admin email first,
+then falls back to DB lookup. DB unavailability no longer blocks super admin.
+
+---
+
+## Fix 8 — `app/api/agent/workflow/route.ts`
+
+Added super admin email check before DB role lookup.
+
+---
+
+## Fix 9 — All Prisma imports
+
+Updated from `@prisma/client` to `../generated/prisma/client` per Prisma 7
+requirement (generator output path is now required and explicit).
+
+---
+
+## Vercel Environment Variables (Required)
+
+| Variable | Required | Notes |
 |---|---|---|
-| `POSTGRES_PRISMA_URL` | ✅ (or DATABASE_URL) | Prisma runtime DB connection |
-| `DATABASE_URL` | ✅ (or POSTGRES_PRISMA_URL) | Prisma migrations + fallback |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✅ | Clerk auth (client) |
-| `CLERK_SECRET_KEY` | ✅ | Clerk auth (server) |
+| `DATABASE_URL` | ✅ | Direct connection (port 5432) — for migrations |
+| `POSTGRES_PRISMA_URL` | ✅ (or DATABASE_URL) | Pooled URL (port 6543) — for runtime |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | ✅ | Clerk auth |
+| `CLERK_SECRET_KEY` | ✅ | Clerk auth |
 | `SUPER_ADMIN_EMAIL` | ✅ | Super admin bypass |
-| `GOOGLE_GEMINI_API_KEY` | ✅ | AI features |
+| `GOOGLE_GEMINI_API_KEY` | recommended | AI features |
 
-## Auth Logic (corrected)
+## Auth Flow
 
 ```
-Request arrives at protected API route
+User makes request
   │
-  ▼
-1. Is user authenticated with Clerk?
-   NO  → 401 Unauthorized
-   YES → continue
+  ├─ Is Clerk session present?
+  │   NO → 401
+  │   YES → continue
   │
-  ▼
-2. Does email === SUPER_ADMIN_EMAIL? (checked BEFORE DB)
-   YES → ✅ Allow (role: super_admin), skip DB entirely
-   NO  → continue
+  ├─ Does email === SUPER_ADMIN_EMAIL? (no DB needed)
+  │   YES → ✅ role = "super_admin"
+  │        DB is updated to super_admin in background
+  │   NO → continue
   │
-  ▼
-3. Look up user in database
-   DB ERROR → 503 Service Unavailable
-   NOT FOUND → create user with role "user" → 403 Forbidden
-   FOUND → continue
+  ├─ Look up user in database
+  │   DB ERROR → 503 (not 500)
+  │   NOT FOUND → auto-create with role="user" → 403 for writes
+  │   FOUND → use DB role
   │
-  ▼
-4. Is role in [super_admin, admin, developer]?
-   YES → ✅ Allow
-   NO  → 403 Forbidden
+  └─ role ∈ {super_admin, admin, developer}?
+      YES → ✅ allow write
+      NO  → 403 Forbidden
 ```
 
-## Route Protection Map
+## Route Protection
 
-| Path pattern | Protected? | Method |
+| Path | Protection | Who |
 |---|---|---|
-| `/api/*` | ❌ GET free | Middleware passes all /api/* |
-| `/api/*` | ✅ POST/PATCH/DELETE require auth | `requireWriteAuth()` in handlers |
-| `/dashboard`, `/crm`, `/admin`, etc. | ✅ Clerk session + role | `AuthGuard` component |
-| `/sign-in`, `/sign-up`, `/access-denied` | ❌ Public | Middleware allowlist |
+| `/api/*` | GET: none; POST/PATCH/DELETE: Clerk session + role | requireWriteAuth |
+| `/dashboard`, `/crm`, `/admin`, etc. | Clerk + role via AuthGuard | Client component |
+| `/sign-in`, `/sign-up`, `/access-denied` | Public | Middleware allowlist |

@@ -1,50 +1,65 @@
 /**
- * lib/api-auth.ts
- * ---------------
- * Shared helper for API-level write-protection.
+ * lib/api-auth.ts — shared write-auth helper for all API routes
+ * ──────────────────────────────────────────────────────────────
+ * ACCESS RULES (evaluated in order, DB only touched if needed):
  *
- * ACCESS RULES (evaluated in order):
- *   1. SUPER_ADMIN_EMAIL match → always allow, skip DB entirely
- *   2. DB role === "admin" | "developer" | "super_admin" → allow
- *   3. DB role === "user" → block writes (GET still passes via middleware)
- *   4. No DB record → block writes
- *   5. DB unreachable → block writes (but super_admin still allowed via rule 1)
+ *  1. No Clerk session          → 401
+ *  2. email === SUPER_ADMIN_EMAIL
+ *       → promote DB record to super_admin (fire-and-forget)
+ *       → return { ok: true, role: "super_admin" }   ← NO DB required
+ *  3. DB role ∈ {super_admin, admin, developer}       → allow write
+ *  4. DB role = "user"                                → 403
+ *  5. No DB record              → auto-create as "user" → 403
+ *  6. DB unreachable            → 503  (super_admin still passes via rule 2)
  *
- * GET requests are intentionally NOT protected here.
- * AI agents (Gemini, etc.) must be able to read all data freely.
- * Only POST / PATCH / PUT / DELETE are gated.
+ * GET requests: NOT protected here — agents read freely.
+ * POST/PATCH/PUT/DELETE: call requireWriteAuth() at the top of the handler.
  */
 
 import { auth, currentUser } from "@clerk/nextjs/server"
-import { prisma } from "@/lib/prisma"
-import { NextResponse } from "next/server"
+import { prisma }            from "@/lib/prisma"
+import { NextResponse }      from "next/server"
 
 export const WRITER_ROLES = new Set(["super_admin", "admin", "developer"])
 
-/** Reads the super-admin email from env, supporting both spellings */
-function getSuperAdminEmail(): string | null {
+export function getSuperAdminEmail(): string | null {
   return (
-    process.env.SUPER_ADMIN_EMAIL?.trim() ||
-    process.env.SUPPER_ADMIN_EMAIL?.trim() ||
+    process.env.SUPER_ADMIN_EMAIL?.trim()  ||
+    process.env.SUPPER_ADMIN_EMAIL?.trim() ||   // typo-tolerant alias
     null
   )
 }
 
 export type AuthResult =
-  | { ok: true; userId: string; role: string }
+  | { ok: true;  userId: string; role: string; email: string }
   | { ok: false; response: NextResponse }
 
 /**
- * Call at the top of any write handler (POST / PATCH / DELETE).
- * Returns { ok: true, userId, role } on success, or { ok: false, response } to return immediately.
- *
- * CRITICAL FIX: Super-admin check runs BEFORE any DB query.
- * This means the super admin always gets through even when the DB is unreachable.
+ * promoteSuperAdminInDb — fire-and-forget background upsert.
+ * Ensures every API that does a DB role lookup will see "super_admin"
+ * instead of "user" after the first login.
  */
+async function promoteSuperAdminInDb(
+  userId: string,
+  email:  string,
+  name?:  string | null,
+  imageUrl?: string | null
+): Promise<void> {
+  try {
+    await prisma.user.upsert({
+      where:  { clerkId: userId },
+      update: { role: "super_admin", email, name: name ?? undefined, imageUrl: imageUrl ?? undefined },
+      create: { clerkId: userId, email, name: name ?? undefined, imageUrl: imageUrl ?? undefined, role: "super_admin" },
+    })
+  } catch (err) {
+    // Non-fatal — super_admin still works without DB record
+    console.warn("[api-auth] super_admin DB promote failed (non-fatal):", err)
+  }
+}
+
 export async function requireWriteAuth(): Promise<AuthResult> {
   try {
     const { userId } = await auth()
-
     if (!userId) {
       return {
         ok: false,
@@ -55,27 +70,30 @@ export async function requireWriteAuth(): Promise<AuthResult> {
       }
     }
 
-    // ── Step 1: Check super-admin by email BEFORE touching the database ──
-    const clerkUser = await currentUser()
-    const email = clerkUser?.emailAddresses[0]?.emailAddress ?? ""
-
-    const superAdminEmail = getSuperAdminEmail()
-    const isSuperAdmin =
-      !!superAdminEmail &&
-      !!email &&
+    // ── Step 1: Identify user via Clerk (no DB) ───────────────────────────
+    const clerkUser        = await currentUser()
+    const email            = clerkUser?.emailAddresses[0]?.emailAddress ?? ""
+    const name             = clerkUser?.fullName ?? clerkUser?.firstName ?? null
+    const imageUrl         = clerkUser?.imageUrl ?? null
+    const superAdminEmail  = getSuperAdminEmail()
+    const isSuperAdmin     =
+      !!superAdminEmail && !!email &&
       email.toLowerCase() === superAdminEmail.toLowerCase()
 
+    // ── Step 2: Super-admin — allow immediately, sync DB in background ────
     if (isSuperAdmin) {
-      // Super admin bypasses all DB checks — always allowed
-      return { ok: true, userId, role: "super_admin" }
+      promoteSuperAdminInDb(userId, email, name, imageUrl)   // fire-and-forget
+      return { ok: true, userId, role: "super_admin", email }
     }
 
-    // ── Step 2: For everyone else, look up role in the database ──
+    // ── Step 3: DB role lookup for everyone else ──────────────────────────
     let dbUser
     try {
       dbUser = await prisma.user.findUnique({ where: { clerkId: userId } })
     } catch (dbErr) {
-      console.error("requireWriteAuth DB error:", dbErr)
+      console.error("[api-auth] DB error during role lookup:", {
+        message: dbErr instanceof Error ? dbErr.message : String(dbErr),
+      })
       return {
         ok: false,
         response: NextResponse.json(
@@ -86,53 +104,35 @@ export async function requireWriteAuth(): Promise<AuthResult> {
     }
 
     if (!dbUser) {
-      // User authenticated with Clerk but no DB record yet.
-      // Auto-create with default "user" role and deny write access.
+      // First time here — create record, deny write access until promoted
       try {
-        if (email) {
-          await prisma.user.create({
-            data: {
-              clerkId: userId,
-              email,
-              name: clerkUser?.fullName ?? clerkUser?.firstName ?? undefined,
-              imageUrl: clerkUser?.imageUrl ?? undefined,
-              role: "user",
-            },
-          })
-        }
-      } catch (createErr) {
-        console.error("requireWriteAuth user create error:", createErr)
-      }
+        await prisma.user.create({
+          data: { clerkId: userId, email, name: name ?? undefined, imageUrl: imageUrl ?? undefined, role: "user" },
+        })
+      } catch { /* ignore duplicate / race condition */ }
 
       return {
         ok: false,
         response: NextResponse.json(
-          {
-            error:
-              "Forbidden: your account does not have write access. Contact an admin to upgrade your role.",
-          },
+          { error: "Forbidden: your account (role: user) does not have write access. Ask an admin to promote your role." },
           { status: 403 }
         ),
       }
     }
 
-    const effectiveRole = dbUser.role
-
-    if (!WRITER_ROLES.has(effectiveRole)) {
+    if (!WRITER_ROLES.has(dbUser.role)) {
       return {
         ok: false,
         response: NextResponse.json(
-          {
-            error: `Forbidden: your role (${effectiveRole}) does not have write access. Required: admin, developer, or super_admin.`,
-          },
+          { error: `Forbidden: role "${dbUser.role}" cannot perform write operations.` },
           { status: 403 }
         ),
       }
     }
 
-    return { ok: true, userId, role: effectiveRole }
+    return { ok: true, userId, role: dbUser.role, email }
   } catch (err) {
-    console.error("requireWriteAuth error:", err)
+    console.error("[api-auth] unexpected error:", err)
     return {
       ok: false,
       response: NextResponse.json(

@@ -1,29 +1,55 @@
 "use client"
 
 /**
- * AuthGuard
- * ---------
- * Wraps every protected UI page.
+ * AuthGuard — wraps every protected dashboard page.
  *
- * ACCESS RULES:
- *   ALLOW → role === "super_admin" | "admin" | "developer"
- *   DENY  → role === "user" → redirect to /access-denied
+ * Flow:
+ *  1. Wait for Clerk to load
+ *  2. If not signed in → /sign-in
+ *  3. Fetch /api/users/me  (creates DB record on first login, promotes super_admin)
+ *  4. If role ∈ {super_admin, admin, developer} → render children
+ *  5. Otherwise → /access-denied
  *
- * /api/users/me handles the super_admin upgrade automatically on every call,
- * so even if the DB had the wrong role it gets fixed before this check runs.
+ * The /api/users/me call is the single point where:
+ *  - DB record is created for new users
+ *  - super_admin email is synced to DB role
+ *  - Profile fields (name, imageUrl) are kept in sync with Clerk
  */
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, createContext, useContext } from "react"
 import { useUser } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
 import { Loader2, FlaskConical } from "lucide-react"
 
+// ─── User context so any child component can read the current user ────────────
+
+interface AppUser {
+  id:       string
+  clerkId:  string
+  email:    string
+  name?:    string | null
+  imageUrl?: string | null
+  role:     string
+}
+
+const UserContext = createContext<AppUser | null>(null)
+
+/** Use this hook in any client component to get the current user */
+export function useCurrentUser() {
+  return useContext(UserContext)
+}
+
+// ─── Allowed roles for dashboard access ──────────────────────────────────────
+
 const ALLOWED_ROLES = new Set(["super_admin", "admin", "developer"])
+
+// ─── AuthGuard ────────────────────────────────────────────────────────────────
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useUser()
   const router = useRouter()
-  const [status, setStatus] = useState<"loading" | "allowed" | "denied">("loading")
+  const [status,  setStatus]  = useState<"loading" | "allowed" | "denied">("loading")
+  const [appUser, setAppUser] = useState<AppUser | null>(null)
 
   useEffect(() => {
     if (!isLoaded) return
@@ -36,8 +62,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     fetch("/api/users/me")
       .then(async (res) => {
         if (!res.ok) {
-          const body = await res.json().catch(() => ({}))
-          console.error("[AuthGuard] /api/users/me failed:", res.status, body)
+          console.error("[AuthGuard] /api/users/me →", res.status)
           return null
         }
         return res.json()
@@ -48,12 +73,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
           return
         }
 
-        // Log clearly so you can see in browser DevTools > Console
-        console.log(
-          `[AuthGuard] email=${user.email} | role=${user.role} | allowed=${ALLOWED_ROLES.has(user.role)}`
-        )
+        console.log(`[AuthGuard] email=${user.email} | role=${user.role} | allowed=${ALLOWED_ROLES.has(user.role)}`)
 
         if (ALLOWED_ROLES.has(user.role)) {
+          setAppUser(user as AppUser)
           setStatus("allowed")
         } else {
           router.replace("/access-denied")
@@ -83,5 +106,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (status === "denied") return null
 
-  return <>{children}</>
+  return (
+    <UserContext.Provider value={appUser}>
+      {children}
+    </UserContext.Provider>
+  )
 }

@@ -13,9 +13,13 @@
  */
 
 import { NextResponse } from "next/server"
-import { auth } from "@clerk/nextjs/server"
+import { auth, currentUser } from "@clerk/nextjs/server"
 import { runWorkflow } from "@/lib/agent-engine"
 import { prisma } from "@/lib/prisma"
+
+function getSuperAdminEmail(): string | null {
+  return process.env.SUPER_ADMIN_EMAIL?.trim() || process.env.SUPPER_ADMIN_EMAIL?.trim() || null
+}
 
 export const maxDuration = 120
 
@@ -35,10 +39,18 @@ export async function POST(req: Request) {
     const { userId } = await auth()
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    // Only developers and admins can trigger workflows
-    const user = await prisma.user.findUnique({ where: { clerkId: userId } })
-    if (!user || !["super_admin", "admin", "developer"].includes(user.role)) {
-      return NextResponse.json({ error: "Forbidden: workflow triggers require developer role or higher" }, { status: 403 })
+    // Super admin check FIRST (no DB needed)
+    const clerkUser = await currentUser()
+    const email = clerkUser?.emailAddresses[0]?.emailAddress ?? ""
+    const superAdminEmail = getSuperAdminEmail()
+    const isSuperAdmin = !!superAdminEmail && !!email && email.toLowerCase() === superAdminEmail.toLowerCase()
+
+    if (!isSuperAdmin) {
+      // DB role lookup for non-super-admins
+      const user = await prisma.user.findUnique({ where: { clerkId: userId } })
+      if (!user || !["super_admin", "admin", "developer"].includes(user.role)) {
+        return NextResponse.json({ error: "Forbidden: workflow triggers require developer role or higher" }, { status: 403 })
+      }
     }
 
     const body = await req.json()

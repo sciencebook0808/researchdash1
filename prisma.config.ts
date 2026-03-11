@@ -1,18 +1,34 @@
 /**
  * prisma.config.ts
  * ----------------
- * Prisma ORM v7: DB connection URL lives here (NOT in schema.prisma).
+ * Prisma ORM v7 — CLI configuration (migrations, db push, generate).
  *
- * For migrations (prisma migrate deploy / db push), Prisma CLI uses
- * datasource.url from this file. For runtime queries, lib/prisma.ts
- * passes the connection string directly to PrismaPg adapter.
+ * The `datasource.url` here is used by Prisma CLI commands only.
+ * Runtime queries use lib/prisma.ts which parses the URL and passes
+ * a pg.PoolConfig directly to PrismaPg (bypassing the SSL override bug).
  *
- * Connection priority for migrations:
- *   DATABASE_URL — use the direct (non-pooled) URL here for reliable migrations.
- *   Supabase: use the "Direct connection" URL, not the pooler URL.
+ * For Supabase:
+ *   DATABASE_URL     → use the "Direct connection" URL (port 5432, no pooler)
+ *   POSTGRES_PRISMA_URL → Supavisor pooled URL (port 6543, for runtime)
+ *
+ * For migrations use the DIRECT URL — Supavisor transaction mode doesn't
+ * support DDL statements.
  */
 import "dotenv/config"
 import { defineConfig, env } from "prisma/config"
+
+// For migrations: prefer DATABASE_URL (direct), fall back to pooled URL
+const migrationUrl =
+  process.env.DATABASE_URL?.trim() ||
+  process.env.POSTGRES_PRISMA_URL?.trim() ||
+  process.env.POSTGRES_URL?.trim()
+
+if (!migrationUrl) {
+  console.warn(
+    "[prisma.config.ts] WARNING: No database URL found. " +
+    "Set DATABASE_URL or POSTGRES_PRISMA_URL before running migrations."
+  )
+}
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -21,8 +37,6 @@ export default defineConfig({
     seed: "tsx prisma/seed.ts",
   },
   datasource: {
-    // Use DATABASE_URL (direct connection) for CLI migrations.
-    // Falls back to POSTGRES_PRISMA_URL if DATABASE_URL is not set.
     url: env("DATABASE_URL"),
   },
 })
