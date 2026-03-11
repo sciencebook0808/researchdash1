@@ -29,6 +29,8 @@ export async function POST(req: Request) {
         description: body.description,
         baseModel: body.baseModel,
         datasetId: body.datasetId || null,
+        method: body.method || null,
+        resultSummary: body.resultSummary || null,
         status: "PENDING",
         loraRank: body.loraRank ? Number(body.loraRank) : null,
         loraAlpha: body.loraAlpha ? Number(body.loraAlpha) : null,
@@ -45,4 +47,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Failed to create experiment" }, { status: 500 })
   }
 }
-

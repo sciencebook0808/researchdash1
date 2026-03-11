@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
+import { UserButton } from "@clerk/nextjs"
 import {
   LayoutDashboard,
   Map,
@@ -14,8 +15,10 @@ import {
   StickyNote,
   ChevronRight,
   Activity,
+  Users,
   Menu,
   X,
+  Settings,
 } from "lucide-react"
 
 const navItems = [
@@ -26,6 +29,7 @@ const navItems = [
   { label: "Experiments",    href: "/experiments",  icon: FlaskConical    },
   { label: "Model Versions", href: "/models",       icon: Package         },
   { label: "Notes",          href: "/notes",        icon: StickyNote      },
+  { label: "Users",          href: "/users",        icon: Users           },
 ]
 
 function NavContent({ onLinkClick }: { onLinkClick?: () => void }) {
@@ -92,16 +96,44 @@ function NavContent({ onLinkClick }: { onLinkClick?: () => void }) {
         })}
       </nav>
 
-      {/* Footer */}
+      {/* Footer — profile + settings */}
       <div className="px-3 pb-4 border-t border-border pt-3 flex-shrink-0">
-        <div className="flex items-center gap-2 px-2">
-          <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0">
-            <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-2">
+          Account
+        </p>
+        <div className="flex items-center gap-2">
+          {/* Clerk user button */}
+          <div className="flex items-center justify-center w-8 h-8">
+            <UserButton
+              afterSignOutUrl="/sign-in"
+              appearance={{
+                elements: {
+                  avatarBox: "w-7 h-7",
+                  userButtonAvatarBox: "w-7 h-7",
+                },
+              }}
+            />
           </div>
-          <div className="min-w-0">
+
+          <div className="flex-1 min-w-0">
             <p className="text-[12px] text-foreground font-medium truncate">Prausdit</p>
-            <p className="text-[11px] text-muted-foreground">v0.2.0</p>
+            <p className="text-[11px] text-muted-foreground">v0.4.0</p>
           </div>
+
+          {/* Settings icon */}
+          <Link
+            href="/settings"
+            onClick={onLinkClick}
+            className={cn(
+              "w-8 h-8 rounded-md flex items-center justify-center transition-colors flex-shrink-0",
+              pathname === "/settings" || pathname.startsWith("/settings")
+                ? "bg-amber-500/10 text-amber-400"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent"
+            )}
+            title="Settings"
+          >
+            <Settings className="w-4 h-4" />
+          </Link>
         </div>
       </div>
     </div>
@@ -113,7 +145,7 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile hamburger button — shown in header on small screens */}
+      {/* Mobile hamburger button */}
       <button
         onClick={() => setMobileOpen(true)}
         className="md:hidden fixed top-3.5 left-4 z-30 w-8 h-8 flex items-center justify-center rounded-md border border-border bg-card hover:bg-accent transition-colors"
@@ -147,7 +179,7 @@ export function Sidebar() {
         <NavContent onLinkClick={() => setMobileOpen(false)} />
       </aside>
 
-      {/* Desktop sidebar — always visible */}
+      {/* Desktop sidebar */}
       <aside className="hidden md:flex w-60 flex-shrink-0 border-r border-border flex-col bg-card/50 backdrop-blur-sm">
         <NavContent />
       </aside>

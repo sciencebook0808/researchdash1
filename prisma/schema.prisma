@@ -9,32 +9,62 @@ datasource db {
 }
 
 // ─────────────────────────────────────────────
+// USERS & ROLES
+// ─────────────────────────────────────────────
+
+enum UserRole {
+  super_admin
+  admin
+  developer
+  user
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String?
+  imageUrl  String?
+  role      UserRole @default(user)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clerkId])
+  @@index([email])
+  @@index([role])
+}
+
+// ─────────────────────────────────────────────
 // ROADMAP
 // ─────────────────────────────────────────────
 
 model RoadmapStep {
-  id          String   @id @default(cuid())
-  phase       Int
-  title       String
-  description String   @db.Text
-  status      StepStatus @default(PENDING)
-  order       Int      @default(0)
-  tasks       RoadmapTask[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                  String     @id @default(cuid())
+  phase               Int
+  title               String
+  description         String     @db.Text
+  status              StepStatus @default(PENDING)
+  order               Int        @default(0)
+  priority            String?
+  milestone           String?
+  estimatedCompletion DateTime?
+  progressPercent     Int        @default(0)
+  tasks               RoadmapTask[]
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
   @@index([phase])
   @@index([status])
 }
 
 model RoadmapTask {
-  id          String   @id @default(cuid())
-  title       String
-  completed   Boolean  @default(false)
-  stepId      String
-  step        RoadmapStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String      @id @default(cuid())
+  title     String
+  completed Boolean     @default(false)
+  stepId    String
+  step      RoadmapStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   @@index([stepId])
 }
@@ -50,28 +80,35 @@ enum StepStatus {
 // ─────────────────────────────────────────────
 
 model DocumentationPage {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   title     String
-  slug      String   @unique
-  content   String   @db.Text
+  slug      String       @unique
+  content   String       @db.Text
   section   String
-  order     Int      @default(0)
+  order     Int          @default(0)
   tags      String[]
+  progress  DocProgress  @default(NOT_STARTED)
   versions  DocVersion[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   @@index([section])
   @@index([slug])
 }
 
+enum DocProgress {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
 model DocVersion {
-  id        String   @id @default(cuid())
-  content   String   @db.Text
+  id        String            @id @default(cuid())
+  content   String            @db.Text
   version   Int
   pageId    String
   page      DocumentationPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  createdAt DateTime          @default(now())
 
   @@index([pageId])
 }
@@ -81,9 +118,9 @@ model DocVersion {
 // ─────────────────────────────────────────────
 
 model Dataset {
-  id               String   @id @default(cuid())
+  id               String        @id @default(cuid())
   name             String
-  description      String?  @db.Text
+  description      String?       @db.Text
   sourceUrl        String?
   datasetType      DatasetType
   numSamples       Int?
@@ -93,8 +130,8 @@ model Dataset {
   format           String?
   license          String?
   experiments      Experiment[]
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   @@index([datasetType])
   @@index([preprocessStatus])
@@ -122,13 +159,15 @@ enum PreprocStatus {
 // ─────────────────────────────────────────────
 
 model Experiment {
-  id              String   @id @default(cuid())
+  id              String           @id @default(cuid())
   name            String
-  description     String?  @db.Text
+  description     String?          @db.Text
   baseModel       String
   datasetId       String?
-  dataset         Dataset? @relation(fields: [datasetId], references: [id])
+  dataset         Dataset?         @relation(fields: [datasetId], references: [id])
   status          ExperimentStatus @default(PENDING)
+  method          String?
+  resultSummary   String?          @db.Text
   config          Json?
   loraRank        Int?
   loraAlpha       Int?
@@ -141,22 +180,22 @@ model Experiment {
   pass1Score      Float?
   logs            ExperimentLog[]
   modelVersions   ModelVersion[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@index([status])
   @@index([datasetId])
 }
 
 model ExperimentLog {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   experimentId String
   experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
   step         Int
   loss         Float?
   learningRate Float?
   message      String?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime   @default(now())
 
   @@index([experimentId])
 }
@@ -174,13 +213,13 @@ enum ExperimentStatus {
 // ─────────────────────────────────────────────
 
 model ModelVersion {
-  id               String   @id @default(cuid())
+  id               String            @id @default(cuid())
   name             String
   version          String
-  description      String?  @db.Text
+  description      String?           @db.Text
   parameterCount   BigInt?
   experimentId     String?
-  experiment       Experiment? @relation(fields: [experimentId], references: [id])
+  experiment       Experiment?       @relation(fields: [experimentId], references: [id])
   quantization     QuantizationType?
   deploymentFormat String?
   bleuScore        Float?
@@ -188,10 +227,10 @@ model ModelVersion {
   humanEval        Float?
   mmluScore        Float?
   fileSizeBytes    BigInt?
-  isDeployed       Boolean  @default(false)
-  notes            String?  @db.Text
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  isDeployed       Boolean           @default(false)
+  notes            String?           @db.Text
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@index([version])
   @@index([experimentId])
@@ -204,6 +243,22 @@ enum QuantizationType {
   GPTQ
   GGUF
   AWQ
+}
+
+// ─────────────────────────────────────────────
+// AI SETTINGS
+// ─────────────────────────────────────────────
+
+model AISettings {
+  id                     String   @id @default(cuid())
+  defaultProvider        String   @default("gemini")
+  geminiApiKey           String?  @db.Text
+  geminiDefaultModel     String   @default("gemini-2.5-flash")
+  openrouterApiKey       String?  @db.Text
+  selectedOpenRouterModels String[] @default([])
+  updatedBy              String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }
 
 // ─────────────────────────────────────────────
@@ -220,4 +275,41 @@ model Note {
   updatedAt DateTime @updatedAt
 
   @@index([pinned])
+}
+
+// ─────────────────────────────────────────────
+// CHAT SESSIONS
+// ─────────────────────────────────────────────
+
+enum ChatVisibility {
+  team
+  private
+}
+
+model ChatSession {
+  id         String          @id @default(cuid())
+  title      String          @default("New Chat")
+  creatorId  String          // Clerk userId of creator
+  creatorName String?
+  visibility ChatVisibility  @default(team)
+  messages   ChatMessage[]
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([creatorId])
+  @@index([visibility])
+  @@index([updatedAt])
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String      // "user" | "assistant"
+  content   String      @db.Text
+  metadata  Json?       // agentSteps, model info, etc.
+  createdAt DateTime    @default(now())
+
+  @@index([sessionId])
+  @@index([createdAt])
 }

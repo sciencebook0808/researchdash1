@@ -2,7 +2,9 @@
 import { Skeleton } from "@/components/ui/skeleton"
 
 import { useState, useEffect } from "react"
-import { CheckCircle2, Clock, Circle, Plus, Edit3, ChevronDown, ChevronRight, Check, X, Loader2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { CheckCircle2, Clock, Circle, Plus, ChevronDown, ChevronRight, Check, X, Loader2 } from "lucide-react"
 import { cn, getStatusColor } from "@/lib/utils"
 
 interface Task { id: string; title: string; completed: boolean }
@@ -92,9 +94,15 @@ export default function RoadmapPage() {
             <h1 className="text-2xl font-semibold text-foreground">Roadmap Tracker</h1>
             <p className="text-[14px] text-muted-foreground mt-1">Development roadmap for Protroit Agent and ProtroitOS</p>
           </div>
-          <div className="text-right">
-            <p className="text-3xl font-bold font-mono text-amber-400">{progressPct}%</p>
-            <p className="text-[12px] text-muted-foreground">{completedTasks}/{totalTasks} tasks</p>
+          <div className="flex items-center gap-2">
+            <div className="text-right">
+              <p className="text-3xl font-bold font-mono text-amber-400">{progressPct}%</p>
+              <p className="text-[12px] text-muted-foreground">{completedTasks}/{totalTasks} tasks</p>
+            </div>
+            <Link href="/roadmap/create" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500 text-black text-[13px] font-semibold hover:bg-amber-400 transition-colors ml-2">
+              <Plus className="w-4 h-4" />
+              Add Step
+            </Link>
           </div>
         </div>
       </div>

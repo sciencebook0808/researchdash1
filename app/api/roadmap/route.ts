@@ -26,7 +26,11 @@ export async function POST(req: Request) {
         title: body.title,
         description: body.description || "",
         status: "PENDING",
-        order: body.order || 99,
+        order: body.order || body.phase || 99,
+        priority: body.priority || null,
+        milestone: body.milestone || null,
+        estimatedCompletion: body.estimatedCompletion ? new Date(body.estimatedCompletion) : null,
+        progressPercent: body.progressPercent ? Number(body.progressPercent) : 0,
         tasks: body.tasks ? { create: body.tasks } : undefined,
       },
       include: { tasks: true },
@@ -37,4 +41,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Failed to create roadmap step" }, { status: 500 })
   }
 }
-

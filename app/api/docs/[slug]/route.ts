@@ -26,7 +26,7 @@ export async function PATCH(
   const { slug } = await params
   const body = await req.json()
 
-  // Save a version snapshot before updating
+  // Save a version snapshot before updating content
   const current = await prisma.documentationPage.findUnique({
     where: { slug }
   })
@@ -51,7 +51,8 @@ export async function PATCH(
       ...(body.title && { title: body.title }),
       ...(body.content !== undefined && { content: body.content }),
       ...(body.section && { section: body.section }),
-      ...(body.tags && { tags: body.tags })
+      ...(body.tags && { tags: body.tags }),
+      ...(body.progress && { progress: body.progress }),
     }
   })
 

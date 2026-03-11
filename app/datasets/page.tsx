@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Database, Plus, ExternalLink, Tag, Loader2, Search } from "lucide-react"
+import Link from "next/link"
+import { Database, Plus, ExternalLink, Tag, Search } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn, formatBytes, formatNumber, getStatusColor } from "@/lib/utils"
 
@@ -102,13 +103,10 @@ export default function DatasetsPage() {
               {formatNumber(totalSamples)} total samples · {formatBytes(totalSize)}
             </p>
           </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500 text-black text-[13px] font-semibold hover:bg-amber-400 transition-colors"
-          >
+          <Link href="/datasets/create" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500 text-black text-[13px] font-semibold hover:bg-amber-400 transition-colors">
             <Plus className="w-4 h-4" />
             Add Dataset
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -128,55 +126,6 @@ export default function DatasetsPage() {
           </div>
         ))}
       </div>
-
-      {/* Add form */}
-      {showForm && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 animate-fade-in">
-          <h3 className="text-[14px] font-semibold text-foreground mb-4">Add New Dataset</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input
-              placeholder="Dataset name"
-              value={form.name}
-              onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-              className="px-3 py-2 rounded-lg border border-border bg-input text-foreground text-[13px] outline-none focus:border-amber-500/50"
-            />
-            <input
-              placeholder="Source URL"
-              value={form.sourceUrl}
-              onChange={e => setForm(p => ({ ...p, sourceUrl: e.target.value }))}
-              className="px-3 py-2 rounded-lg border border-border bg-input text-foreground text-[13px] outline-none focus:border-amber-500/50"
-            />
-            <input
-              placeholder="Tags (comma-separated)"
-              value={form.tags}
-              onChange={e => setForm(p => ({ ...p, tags: e.target.value }))}
-              className="px-3 py-2 rounded-lg border border-border bg-input text-foreground text-[13px] outline-none focus:border-amber-500/50"
-            />
-            <select
-              value={form.datasetType}
-              onChange={e => setForm(p => ({ ...p, datasetType: e.target.value }))}
-              className="px-3 py-2 rounded-lg border border-border bg-input text-foreground text-[13px] outline-none focus:border-amber-500/50"
-            >
-              {["CODE", "TEXT", "INSTRUCTION", "QA", "MIXED"].map(t => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <textarea
-            placeholder="Description (optional)"
-            value={form.description}
-            onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
-            rows={2}
-            className="w-full mt-3 px-3 py-2 rounded-lg border border-border bg-input text-foreground text-[13px] outline-none focus:border-amber-500/50 resize-none"
-          />
-          <div className="flex gap-2 mt-3">
-            <button onClick={handleCreate} className="px-4 py-2 rounded-lg bg-amber-500 text-black text-[13px] font-semibold hover:bg-amber-400 transition-colors">
-              Create Dataset
-            </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg border border-border text-[13px] text-muted-foreground hover:text-foreground transition-colors">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Search & filter */}
       <div className="flex items-center gap-3">

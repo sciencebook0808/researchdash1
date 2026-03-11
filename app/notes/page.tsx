@@ -2,7 +2,8 @@
 import { Skeleton } from "@/components/ui/skeleton"
 
 import { useState, useEffect } from "react"
-import { StickyNote, Plus, Pin, Tag, Loader2, Edit3, Trash2, Save, X } from "lucide-react"
+import Link from "next/link"
+import { StickyNote, Plus, Pin, Tag, Edit3, Trash2, Save, X } from "lucide-react"
 import { cn, formatDate } from "@/lib/utils"
 import { DocContent } from "@/components/docs/doc-content"
 
@@ -112,49 +113,12 @@ export default function NotesPage() {
             <h1 className="text-2xl font-semibold text-foreground">Notes</h1>
             <p className="text-[14px] text-muted-foreground mt-1">{notes.length} research notes · supports Markdown</p>
           </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500 text-black text-[13px] font-semibold hover:bg-amber-400 transition-colors"
-          >
+          <Link href="/notes/create" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500 text-black text-[13px] font-semibold hover:bg-amber-400 transition-colors">
             <Plus className="w-4 h-4" />
             New Note
-          </button>
+          </Link>
         </div>
       </div>
-
-      {/* Create form */}
-      {showForm && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 animate-fade-in">
-          <h3 className="text-[14px] font-semibold text-foreground mb-4">New Research Note</h3>
-          <input
-            placeholder="Note title"
-            value={form.title}
-            onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
-            className="w-full px-3 py-2 mb-3 rounded-lg border border-border bg-input text-foreground text-[13px] outline-none focus:border-amber-500/50"
-          />
-          <input
-            placeholder="Tags (comma-separated)"
-            value={form.tags}
-            onChange={e => setForm(p => ({ ...p, tags: e.target.value }))}
-            className="w-full px-3 py-2 mb-3 rounded-lg border border-border bg-input text-foreground text-[13px] outline-none focus:border-amber-500/50"
-          />
-          <textarea
-            placeholder="Write your note in Markdown…"
-            value={form.content}
-            onChange={e => setForm(p => ({ ...p, content: e.target.value }))}
-            rows={8}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-input text-foreground text-[13px] font-mono outline-none focus:border-amber-500/50 resize-none"
-          />
-          <div className="flex gap-2 mt-3">
-            <button onClick={handleCreate} className="px-4 py-2 rounded-lg bg-amber-500 text-black text-[13px] font-semibold hover:bg-amber-400 transition-colors">
-              Save Note
-            </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg border border-border text-[13px] text-muted-foreground hover:text-foreground transition-colors">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Main content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

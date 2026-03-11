@@ -2,7 +2,9 @@
 import { Skeleton } from "@/components/ui/skeleton"
 
 import { useState, useEffect } from "react"
-import { FlaskConical, Plus, ChevronDown, ChevronRight, Loader2, TrendingDown } from "lucide-react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { FlaskConical, Plus, ChevronDown, ChevronRight, TrendingDown } from "lucide-react"
 import { cn, getStatusColor, formatDate } from "@/lib/utils"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts"
 
@@ -17,15 +19,10 @@ interface Experiment {
 }
 
 export default function ExperimentsPage() {
+  const router = useRouter()
   const [experiments, setExperiments] = useState<Experiment[]>([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({
-    name: "", baseModel: "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    loraRank: "64", loraAlpha: "128", batchSize: "4",
-    learningRate: "0.0002", epochs: "3", description: ""
-  })
 
   useEffect(() => {
     fetch("/api/experiments")
@@ -34,25 +31,7 @@ export default function ExperimentsPage() {
       .catch(() => { setExperiments([]); setLoading(false) })
   }, [])
 
-  const handleCreate = async () => {
-    const res = await fetch("/api/experiments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        loraRank: Number(form.loraRank),
-        loraAlpha: Number(form.loraAlpha),
-        batchSize: Number(form.batchSize),
-        learningRate: Number(form.learningRate),
-        epochs: Number(form.epochs),
-      })
-    })
-    if (res.ok) {
-      const exp = await res.json()
-      setExperiments(prev => [exp, ...prev])
-      setShowForm(false)
-    }
-  }
+  const handleCreate = () => {}  // unused - navigates to create page
 
   if (loading) return (
     <div className="space-y-4">
@@ -86,53 +65,12 @@ export default function ExperimentsPage() {
               {experiments.filter(e => e.status === "COMPLETED").length} completed · {experiments.filter(e => e.status === "RUNNING").length} running
             </p>
           </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500 text-black text-[13px] font-semibold hover:bg-amber-400 transition-colors"
-          >
+          <Link href="/experiments/create" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500 text-black text-[13px] font-semibold hover:bg-amber-400 transition-colors">
             <Plus className="w-4 h-4" />
             New Experiment
-          </button>
+          </Link>
         </div>
       </div>
-
-      {/* Create form */}
-      {showForm && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 animate-fade-in">
-          <h3 className="text-[14px] font-semibold text-foreground mb-4">New Experiment</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input placeholder="Experiment name" value={form.name}
-              onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-              className="px-3 py-2 rounded-lg border border-border bg-input text-foreground text-[13px] outline-none focus:border-amber-500/50" />
-            <input placeholder="Base model" value={form.baseModel}
-              onChange={e => setForm(p => ({ ...p, baseModel: e.target.value }))}
-              className="px-3 py-2 rounded-lg border border-border bg-input text-foreground text-[13px] outline-none focus:border-amber-500/50" />
-            {[
-              ["LoRA Rank", "loraRank"], ["LoRA Alpha", "loraAlpha"],
-              ["Batch Size", "batchSize"], ["Learning Rate", "learningRate"], ["Epochs", "epochs"]
-            ].map(([label, key]) => (
-              <div key={key}>
-                <label className="text-[11px] text-muted-foreground mb-1 block">{label}</label>
-                <input value={form[key as keyof typeof form]}
-                  onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-input text-foreground text-[13px] outline-none focus:border-amber-500/50 font-mono" />
-              </div>
-            ))}
-          </div>
-          <textarea placeholder="Description" value={form.description}
-            onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
-            rows={2}
-            className="w-full mt-3 px-3 py-2 rounded-lg border border-border bg-input text-foreground text-[13px] outline-none focus:border-amber-500/50 resize-none" />
-          <div className="flex gap-2 mt-3">
-            <button onClick={handleCreate} className="px-4 py-2 rounded-lg bg-amber-500 text-black text-[13px] font-semibold hover:bg-amber-400 transition-colors">
-              Create Experiment
-            </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg border border-border text-[13px] text-muted-foreground hover:text-foreground transition-colors">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Experiment list */}
       <div className="space-y-3">
