@@ -15,7 +15,7 @@ async function getUser(clerkId: string) {
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
     const { userId } = await auth()
@@ -26,10 +26,11 @@ export async function PATCH(
       return NextResponse.json({ error: "Access denied." }, { status: 403 })
     }
 
-    const session = await prisma.chatSession.findUnique({ where: { id: params.sessionId } })
+    const { sessionId } = await params
+
+    const session = await prisma.chatSession.findUnique({ where: { id: sessionId } })
     if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 })
 
-    // Only creator, admin, or super_admin can edit
     const canEdit =
       session.creatorId === userId ||
       dbUser.role === "super_admin" ||
@@ -42,7 +43,7 @@ export async function PATCH(
     if (visibility !== undefined) data.visibility = visibility === "private" ? "private" : "team"
 
     const updated = await prisma.chatSession.update({
-      where: { id: params.sessionId },
+      where: { id: sessionId },
       data,
     })
 
@@ -55,7 +56,7 @@ export async function PATCH(
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
     const { userId } = await auth()
@@ -66,17 +67,18 @@ export async function DELETE(
       return NextResponse.json({ error: "Access denied." }, { status: 403 })
     }
 
-    const session = await prisma.chatSession.findUnique({ where: { id: params.sessionId } })
+    const { sessionId } = await params
+
+    const session = await prisma.chatSession.findUnique({ where: { id: sessionId } })
     if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 })
 
-    // developer can only delete their own; admin+ can delete any
     const canDelete =
       session.creatorId === userId ||
       dbUser.role === "super_admin" ||
       dbUser.role === "admin"
     if (!canDelete) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-    await prisma.chatSession.delete({ where: { id: params.sessionId } })
+    await prisma.chatSession.delete({ where: { id: sessionId } })
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("ChatSession DELETE error:", err)

@@ -14,7 +14,11 @@ async function getUser(clerkId: string) {
   return prisma.user.findUnique({ where: { clerkId } })
 }
 
-async function canAccessSession(session: { creatorId: string; visibility: string }, userId: string, role: string) {
+async function canAccessSession(
+  session: { creatorId: string; visibility: string },
+  userId: string,
+  role: string
+) {
   if (role === "super_admin" || role === "admin") return true
   if (session.visibility === "team") return true
   if (session.creatorId === userId) return true
@@ -23,7 +27,7 @@ async function canAccessSession(session: { creatorId: string; visibility: string
 
 export async function GET(
   req: Request,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
     const { userId } = await auth()
@@ -34,10 +38,12 @@ export async function GET(
       return NextResponse.json({ error: "Access denied." }, { status: 403 })
     }
 
-    const session = await prisma.chatSession.findUnique({ where: { id: params.sessionId } })
+    const { sessionId } = await params
+
+    const session = await prisma.chatSession.findUnique({ where: { id: sessionId } })
     if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 })
 
-    if (!await canAccessSession(session, userId, dbUser.role)) {
+    if (!(await canAccessSession(session, userId, dbUser.role))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -47,13 +53,13 @@ export async function GET(
 
     const [messages, total] = await Promise.all([
       prisma.chatMessage.findMany({
-        where: { sessionId: params.sessionId },
+        where: { sessionId },
         orderBy: { createdAt: "asc" },
         skip,
         take: PAGE_SIZE,
         select: { id: true, role: true, content: true, metadata: true, createdAt: true },
       }),
-      prisma.chatMessage.count({ where: { sessionId: params.sessionId } }),
+      prisma.chatMessage.count({ where: { sessionId } }),
     ])
 
     return NextResponse.json({ messages, total, page, pageSize: PAGE_SIZE })
@@ -65,7 +71,7 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
     const { userId } = await auth()
@@ -76,7 +82,9 @@ export async function POST(
       return NextResponse.json({ error: "Access denied." }, { status: 403 })
     }
 
-    const session = await prisma.chatSession.findUnique({ where: { id: params.sessionId } })
+    const { sessionId } = await params
+
+    const session = await prisma.chatSession.findUnique({ where: { id: sessionId } })
     if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 })
 
     const { messages } = await req.json()
@@ -84,18 +92,17 @@ export async function POST(
       return NextResponse.json({ error: "messages array required" }, { status: 400 })
     }
 
-    // Batch-insert messages and bump session updatedAt
     await prisma.$transaction([
       prisma.chatMessage.createMany({
         data: messages.map((m: { role: string; content: string; metadata?: unknown }) => ({
-          sessionId: params.sessionId,
+          sessionId,
           role: m.role,
           content: m.content,
           metadata: m.metadata ?? undefined,
         })),
       }),
       prisma.chatSession.update({
-        where: { id: params.sessionId },
+        where: { id: sessionId },
         data: { updatedAt: new Date() },
       }),
     ])
