@@ -9,7 +9,7 @@ export async function GET() {
     return NextResponse.json(pages)
   } catch (err) {
     console.error("GET /api/docs error:", err)
-    return NextResponse.json({ error: "Failed to fetch docs" }, { status: 500 })
+    return NextResponse.json([], { status: 200 })
   }
 }
 

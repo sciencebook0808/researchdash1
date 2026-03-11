@@ -5,8 +5,8 @@ import { Header } from "@/components/layout/header"
 import { ChatbotWidget } from "@/components/chatbot/chatbot-widget"
 
 export const metadata: Metadata = {
-  title: "PyCode-SLM Research Dashboard",
-  description: "AI Research Lab — Python Small Language Model Development Platform",
+  title: "Prausdit Research Lab",
+  description: "AI Agent Research Environment — Building Protroit Agent & ProtroitOS",
 }
 
 export default function RootLayout({

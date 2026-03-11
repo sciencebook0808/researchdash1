@@ -13,7 +13,7 @@ export async function GET() {
     return NextResponse.json(experiments)
   } catch (error) {
     console.error("Experiments GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch experiments" }, { status: 500 })
+    return NextResponse.json([], { status: 200 })
   }
 }
 

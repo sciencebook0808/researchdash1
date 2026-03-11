@@ -31,7 +31,7 @@ export function Header() {
           {/* Model status — hide label on very small screens */}
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/5">
             <span className="status-dot completed" />
-            <span className="text-[12px] text-emerald-400 font-mono whitespace-nowrap">v0.2 deployed</span>
+            <span className="text-[12px] text-emerald-400 font-mono whitespace-nowrap">Protroit v0.2</span>
           </div>
 
           <button className="w-8 h-8 rounded-md border border-border bg-muted hover:bg-accent flex items-center justify-center transition-colors">

@@ -30,7 +30,8 @@ export default function ExperimentsPage() {
   useEffect(() => {
     fetch("/api/experiments")
       .then(r => r.json())
-      .then(d => { setExperiments(d); setLoading(false) })
+      .then(d => { setExperiments(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => { setExperiments([]); setLoading(false) })
   }, [])
 
   const handleCreate = async () => {

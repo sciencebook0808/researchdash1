@@ -12,10 +12,8 @@ import {
   FlaskConical,
   Package,
   StickyNote,
-  Cpu,
   ChevronRight,
   Activity,
-  Zap,
   Menu,
   X,
 } from "lucide-react"
@@ -39,11 +37,11 @@ function NavContent({ onLinkClick }: { onLinkClick?: () => void }) {
       <div className="h-14 flex items-center px-4 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-md bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
-            <Cpu className="w-4 h-4 text-amber-400" />
+            <FlaskConical className="w-4 h-4 text-amber-400" />
           </div>
           <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-foreground leading-none">PyCode-SLM</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Research Platform</p>
+            <p className="text-[13px] font-semibold text-foreground leading-none">Prausdit Research Lab</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">AI Agent Research Environment</p>
           </div>
         </div>
       </div>
@@ -98,10 +96,10 @@ function NavContent({ onLinkClick }: { onLinkClick?: () => void }) {
       <div className="px-3 pb-4 border-t border-border pt-3 flex-shrink-0">
         <div className="flex items-center gap-2 px-2">
           <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0">
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
           </div>
           <div className="min-w-0">
-            <p className="text-[12px] text-foreground font-medium truncate">Research Lab</p>
+            <p className="text-[12px] text-foreground font-medium truncate">Prausdit</p>
             <p className="text-[11px] text-muted-foreground">v0.2.0</p>
           </div>
         </div>

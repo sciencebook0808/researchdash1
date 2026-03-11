@@ -7,7 +7,7 @@ export async function GET() {
     return NextResponse.json(notes)
   } catch (error) {
     console.error("Notes GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch notes" }, { status: 500 })
+    return NextResponse.json([], { status: 200 })
   }
 }
 

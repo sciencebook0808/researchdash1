@@ -3,7 +3,7 @@ import { formatBytes, formatNumber, getStatusColor } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import {
-  Cpu, Database, FlaskConical, Package, TrendingUp, ArrowRight,
+  FlaskConical, Database, Package, TrendingUp, ArrowRight,
   CheckCircle2, Clock, Circle, Target, HardDrive, Zap, GitBranch
 } from "lucide-react"
 
@@ -91,33 +91,33 @@ export default async function DashboardPage() {
       {/* Page header */}
       <div>
         <div className="flex items-center gap-2 text-[12px] text-muted-foreground font-mono mb-2">
-          <span className="text-amber-500">▸</span> PYCODE-SLM RESEARCH PLATFORM
+          <span className="text-amber-500">▸</span> PRAUSDIT RESEARCH PLATFORM
         </div>
         <h1 className="text-2xl font-semibold text-foreground">Project Overview</h1>
         <p className="text-[14px] text-muted-foreground mt-1">
-          Python-specialized Small Language Model · 300M–500M params · Low-resource deployment
+          Building Protroit Agent &amp; ProtroitOS — Offline-first AI ecosystem for edge devices
         </p>
       </div>
 
-      {/* Model spec banner */}
+      {/* Protroit Agent spec banner */}
       <div className="relative overflow-hidden rounded-xl border border-amber-500/20 bg-amber-500/5 p-5">
         <div className="absolute inset-0 bg-grid opacity-30" />
         <div className="relative flex flex-wrap items-center gap-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
-              <Cpu className="w-5 h-5 text-amber-400" />
+              <FlaskConical className="w-5 h-5 text-amber-400" />
             </div>
             <div>
-              <p className="text-[11px] text-muted-foreground font-mono uppercase">Target Model</p>
-              <p className="text-[15px] font-semibold text-foreground">PyCode-SLM v1.0</p>
+              <p className="text-[11px] text-muted-foreground font-mono uppercase">Current Focus</p>
+              <p className="text-[15px] font-semibold text-foreground">Protroit Agent v1.0</p>
             </div>
           </div>
           <div className="h-8 w-px bg-amber-500/20 hidden sm:block" />
           {[
-            { icon: Target, label: "Parameters", value: "300M–500M" },
-            { icon: HardDrive, label: "RAM Target", value: "2–4 GB" },
-            { icon: Zap, label: "Base Model", value: "TinyLlama-1.1B" },
-            { icon: GitBranch, label: "Technique", value: "QLoRA" },
+            { icon: Target, label: "Target Platform", value: "Mobile / Edge" },
+            { icon: HardDrive, label: "RAM Budget", value: "2–6 GB" },
+            { icon: Zap, label: "Architecture", value: "SLM Orchestrator" },
+            { icon: GitBranch, label: "Mode", value: "Offline-First" },
           ].map(({ icon: Icon, label, value }) => (
             <div key={label} className="flex items-center gap-2">
               <Icon className="w-4 h-4 text-amber-500/70" />

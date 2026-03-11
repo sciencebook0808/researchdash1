@@ -16,10 +16,10 @@ interface Message {
 }
 
 const SUGGESTIONS = [
-  { icon: Code, text: "Explain LoRA fine-tuning" },
-  { icon: FileText, text: "What is QLoRA quantization?" },
-  { icon: Zap, text: "Summarize the training pipeline" },
-  { icon: Sparkles, text: "Generate a data cleaning script" },
+  { icon: Code, text: "How does Protroit Agent work offline?" },
+  { icon: FileText, text: "Explain SLM orchestration and intent detection" },
+  { icon: Zap, text: "Best models for on-device inference?" },
+  { icon: Sparkles, text: "Generate a ProtroitOS agent architecture plan" },
 ]
 
 export function ChatbotWidget() {

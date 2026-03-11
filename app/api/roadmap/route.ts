@@ -10,7 +10,7 @@ export async function GET() {
     return NextResponse.json(steps)
   } catch (error) {
     console.error("Roadmap GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch roadmap" }, { status: 500 })
+    return NextResponse.json([], { status: 200 })
   }
 }
 

@@ -20,7 +20,8 @@ export default function RoadmapPage() {
   useEffect(() => {
     fetch("/api/roadmap")
       .then(r => r.json())
-      .then(d => { setSteps(d); setLoading(false) })
+      .then(d => { setSteps(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => { setSteps([]); setLoading(false) })
   }, [])
 
   const toggleExpand = (id: string) => {
@@ -89,7 +90,7 @@ export default function RoadmapPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Roadmap Tracker</h1>
-            <p className="text-[14px] text-muted-foreground mt-1">12-phase development plan from dataset collection to deployment</p>
+            <p className="text-[14px] text-muted-foreground mt-1">Development roadmap for Protroit Agent and ProtroitOS</p>
           </div>
           <div className="text-right">
             <p className="text-3xl font-bold font-mono text-amber-400">{progressPct}%</p>
@@ -128,6 +129,15 @@ export default function RoadmapPage() {
 
       {/* Steps */}
       <div className="space-y-3">
+        {steps.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl border border-dashed border-border bg-card/30">
+            <div className="w-12 h-12 rounded-full bg-muted border border-border flex items-center justify-center mb-3">
+              <CheckCircle2 className="w-5 h-5 text-muted-foreground" />
+            </div>
+            <p className="text-[14px] font-medium text-foreground mb-1">No roadmap steps yet</p>
+            <p className="text-[12px] text-muted-foreground">Use the API or seed the database to add development phases.</p>
+          </div>
+        )}
         {steps.map((step) => {
           const isExpanded = expanded.has(step.id)
           const tasksDone = step.tasks.filter(t => t.completed).length

@@ -15,7 +15,7 @@ export async function GET() {
     )
   } catch (error) {
     console.error("Datasets GET error:", error)
-    return NextResponse.json({ error: "Failed to fetch datasets" }, { status: 500 })
+    return NextResponse.json([], { status: 200 })
   }
 }
 

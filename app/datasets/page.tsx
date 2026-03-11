@@ -39,7 +39,8 @@ export default function DatasetsPage() {
   useEffect(() => {
     fetch("/api/datasets")
       .then(r => r.json())
-      .then(d => { setDatasets(d); setLoading(false) })
+      .then(d => { setDatasets(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => { setDatasets([]); setLoading(false) })
   }, [])
 
   const filtered = datasets.filter(d => {

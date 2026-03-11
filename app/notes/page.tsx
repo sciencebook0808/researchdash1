@@ -23,7 +23,8 @@ export default function NotesPage() {
   useEffect(() => {
     fetch("/api/notes")
       .then(r => r.json())
-      .then(d => { setNotes(d); setLoading(false) })
+      .then(d => { setNotes(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => { setNotes([]); setLoading(false) })
   }, [])
 
   const handleCreate = async () => {

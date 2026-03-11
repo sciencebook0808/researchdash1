@@ -40,7 +40,7 @@ export default async function DocsPage() {
         </div>
         <h1 className="text-2xl font-semibold text-foreground">Documentation</h1>
         <p className="text-[14px] text-muted-foreground mt-1">
-          Complete engineering reference for PyCode-SLM development
+          Engineering reference for Protroit Agent &amp; ProtroitOS development
         </p>
       </div>
 
