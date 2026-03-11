@@ -6,8 +6,9 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  // Prisma requires these packages to be bundled server-side (Vercel serverless)
-  serverExternalPackages: ["@prisma/client", "prisma"],
+  // Prisma v7 uses the pg driver adapter (pure JS) — exclude native pg bindings
+  // from the serverless bundle to avoid missing binary errors on Vercel.
+  serverExternalPackages: ["pg-native"],
 }
 
 module.exports = nextConfig
