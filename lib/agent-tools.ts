@@ -14,6 +14,7 @@
 import { tool } from "ai"
 import { z } from "zod"
 import { prisma } from "./prisma"
+import type { Prisma } from "@prisma/client"
 
 // ─── Helper: strip HTML for web content ─────────────────────────────────────
 
@@ -437,7 +438,7 @@ export const createExperiment = tool({
   execute: async ({ name, baseModel, description, method, loraRank, loraAlpha, batchSize, learningRate, epochs, datasetId, config }) => {
     try {
       const exp = await prisma.experiment.create({
-        data: { name, baseModel, description, method, status: "PENDING", loraRank, loraAlpha, batchSize, learningRate, epochs, datasetId, config },
+        data: { name, baseModel, description, method, status: "PENDING", loraRank, loraAlpha, batchSize, learningRate, epochs, datasetId, config: config as Prisma.InputJsonValue | undefined },
       })
       return { success: true, id: exp.id, name: exp.name }
     } catch (err) {
