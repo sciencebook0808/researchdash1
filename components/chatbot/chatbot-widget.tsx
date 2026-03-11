@@ -235,7 +235,7 @@ function MessagesPane({ messages, currentStatus, isStreaming, toggleSteps, scrol
   currentStatus: string | null
   isStreaming: boolean
   toggleSteps: (id: string) => void
-  scrollRef: React.RefObject<HTMLDivElement>
+  scrollRef: React.RefObject<HTMLDivElement | null>
 }) {
   if (messages.length === 0) {
     return (
@@ -323,7 +323,7 @@ function MessagesPane({ messages, currentStatus, isStreaming, toggleSteps, scrol
 }
 
 function InputBar({ inputRef, input, setInput, handleKeyDown, sendMessage, isStreaming, onStop, selectedModel, showModelPicker, setShowModelPicker, availableModels, setSelectedModel, showCommands, setShowCommands }: {
-  inputRef: React.RefObject<HTMLTextAreaElement>
+  inputRef: React.RefObject<HTMLTextAreaElement | null>
   input: string
   setInput: (v: string) => void
   handleKeyDown: (e: React.KeyboardEvent) => void
@@ -640,7 +640,7 @@ export function ChatbotWidget() {
     ? "fixed inset-4 sm:inset-6 z-50 rounded-2xl border border-border bg-card shadow-2xl flex flex-col overflow-hidden"
     : "fixed bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] max-w-[440px] h-[min(660px,calc(100vh-8rem))] rounded-2xl border border-border bg-card shadow-2xl flex flex-col overflow-hidden animate-slide-in-right"
 
-  return (
+ return (
     <>
       <button onClick={() => setOpen(!open)} aria-label={open ? "Close Agent" : "Open Agent"}
         className={cn("fixed bottom-6 right-4 sm:right-6 z-50 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all duration-200",
