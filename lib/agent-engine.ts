@@ -321,8 +321,8 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
               controller.enqueue(evt({ type: "status", text: "💭 Analysing results…", step: stepNum }))
             }
 
-            if (chunk.type === "text-delta" && chunk.textDelta) {
-              controller.enqueue(evt({ type: "text", text: chunk.textDelta }))
+            if (chunk.type === "text-delta" && chunk.text) {
+              controller.enqueue(evt({ type: "text", text: chunk.text }))
             }
           } catch { /* ignore serialization errors on individual chunks */ }
         }
