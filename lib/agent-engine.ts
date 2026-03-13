@@ -31,7 +31,7 @@
  *       Tool call streaming is now always enabled by default.
  */
 
-import { streamText } from "ai"
+import { streamText, stepCountIs } from "ai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createOpenAI } from "@ai-sdk/openai"
 import { prisma } from "./prisma"
@@ -264,7 +264,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
           system: systemPrompt,
           messages,
           tools: agentTools,
-          maxSteps: 20,
+          stopWhen: stepCountIs(20),
           maxRetries: 1,
           temperature: 0.65,
         })
