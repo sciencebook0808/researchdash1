@@ -1,14 +1,14 @@
 "use client"
 
 import { useEditor, EditorContent, BubbleMenu } from "@tiptap/react"
-import StarterKit from "@tiptap/starter-kit"
-import Heading from "@tiptap/extension-heading"
-import Placeholder from "@tiptap/extension-placeholder"
-import Underline from "@tiptap/extension-underline"
-import Link from "@tiptap/extension-link"
-import Image from "@tiptap/extension-image"
-import TextStyle from "@tiptap/extension-text-style"
-import Typography from "@tiptap/extension-typography"
+import { StarterKit } from "@tiptap/starter-kit"
+import { Heading } from "@tiptap/extension-heading"
+import { Placeholder } from "@tiptap/extension-placeholder"
+import { Underline } from "@tiptap/extension-underline"
+import { Link } from "@tiptap/extension-link"
+import { Image } from "@tiptap/extension-image"
+import { TextStyle } from "@tiptap/extension-text-style"
+import { Typography } from "@tiptap/extension-typography"
 import { cn } from "@/lib/utils"
 import {
   Bold, Italic, UnderlineIcon, Strikethrough, Code, Link2,
