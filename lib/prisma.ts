@@ -15,7 +15,9 @@
  *   that throws clear developer errors instead of crashing the application.
  */
 
-import type { PoolConfig } from "pg"
+// NOTE: We avoid importing PoolConfig from "pg" directly because
+// @prisma/adapter-pg bundles its own @types/pg which can conflict.
+// Instead we use a plain object and cast when passing to PrismaPg.
 
 // ─── Conditional imports - only load heavy modules if DB is configured ───────
 
@@ -48,7 +50,7 @@ function getRawUrl(): string {
 
 // ─── build PoolConfig without connectionString (bypasses SSL override bug) ──
 
-function buildPoolConfig(): PoolConfig {
+function buildPoolConfig(): Record<string, unknown> {
   const raw = getRawUrl()
   let parsed: URL
   try {
@@ -112,7 +114,7 @@ function createPrismaClient(): PrismaClientType {
   }
 
   return new PrismaClient({
-    adapter: new PrismaPg(buildPoolConfig()),
+    adapter: new PrismaPg(buildPoolConfig() as ConstructorParameters<typeof PrismaPg>[0]),
     log: process.env.NODE_ENV === "development"
       ? ["query", "error", "warn"]
       : ["error"],
