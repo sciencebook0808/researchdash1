@@ -14,7 +14,6 @@
  * For migrations use the DIRECT URL — Supavisor transaction mode doesn't
  * support DDL statements.
  */
-import "dotenv/config"
 import { defineConfig } from "prisma/config"
 
 // For migrations: prefer DATABASE_URL (direct), fall back to pooled URL
