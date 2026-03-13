@@ -1,6 +1,6 @@
 /**
  * Prausdit Research Lab — Agent Engine
- * AI SDK v4.x (March 2026)
+ * AI SDK v6.x (March 2026)
  *
  * Architecture:
  *   User Message
@@ -232,7 +232,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
         const aiModel = await getModel(provider, model)
         let stepNum = 0
 
-        // AI SDK v4: use streamText with maxSteps for multi-step tool execution
+        // AI SDK v6: use streamText with maxSteps for multi-step tool execution
         const result = streamText({
           model: aiModel,
           system: systemPrompt,

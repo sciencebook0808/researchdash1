@@ -1,11 +1,11 @@
 /**
- * Prausdit Research Lab — Agent Tools (AI SDK v4)
+ * Prausdit Research Lab — Agent Tools (AI SDK v6)
  *
  * All tools execute through Prisma only — no shell access, no arbitrary
  * filesystem access. Security boundary enforced here.
  *
- * Tool registry follows AI SDK v4 tool schema pattern:
- *   - Typed parameters (Zod)
+ * Tool registry follows AI SDK v6 tool schema pattern:
+ *   - Typed inputSchema (Zod)
  *   - Descriptive docstrings for LLM tool selection
  *   - Structured JSON returns
  *   - Error-safe execution
@@ -33,7 +33,7 @@ function stripHtml(html: string): string {
 export const searchInternalDocs = tool({
   description:
     "Search the internal knowledge base including documentation pages, experiments, datasets, notes, and roadmap steps. Use this to find existing research, avoid duplicates, and retrieve context before creating new content. Supports full-text search across all CRM entities.",
-  parameters: z.object({
+  inputSchema: z.object({
     query: z.string().describe("Search query (keywords or natural language phrases)"),
     sources: z
       .array(z.enum(["docs", "experiments", "datasets", "notes", "roadmap", "models"]))
@@ -177,7 +177,7 @@ export const searchInternalDocs = tool({
 export const getKnowledgeGraph = tool({
   description:
     "Retrieve a knowledge graph showing relationships between CRM entities. Returns datasets linked to experiments, experiments linked to models, and roadmap steps with tasks. Use this for research autopilot workflows to understand the full project context.",
-  parameters: z.object({
+  inputSchema: z.object({
     includeMetrics: z.boolean().optional().default(false).describe("Include benchmark metrics in model nodes"),
   }),
   execute: async ({ includeMetrics = false }) => {
@@ -246,7 +246,7 @@ export const getKnowledgeGraph = tool({
 
 export const readDocument = tool({
   description: "Read the full content of a specific documentation page by its slug.",
-  parameters: z.object({
+  inputSchema: z.object({
     slug: z.string().describe("The documentation page slug (e.g. 'slm-training-pipeline')"),
   }),
   execute: async ({ slug }) => {
@@ -263,7 +263,7 @@ export const readDocument = tool({
 export const createDocument = tool({
   description:
     "Create a new documentation page in the Prausdit Research Lab knowledge base. Use for /document commands, auto-documentation after experiments, and research reports. Write comprehensive, technical content — not placeholders.",
-  parameters: z.object({
+  inputSchema: z.object({
     title: z.string().describe("Page title"),
     slug: z.string().describe("URL slug (kebab-case, unique)"),
     section: z.string().describe("Section category (e.g. 'Research', 'Architecture', 'Training', 'Benchmarks', 'Datasets')"),
@@ -293,7 +293,7 @@ export const createDocument = tool({
 
 export const updateDocument = tool({
   description: "Update an existing documentation page by its slug. Use for incremental improvements, adding benchmark results, or updating research findings.",
-  parameters: z.object({
+  inputSchema: z.object({
     slug: z.string().describe("The slug of the page to update"),
     title: z.string().optional(),
     content: z.string().optional(),
@@ -315,7 +315,7 @@ export const updateDocument = tool({
 
 export const createNote = tool({
   description: "Create a new research note. Use for /note commands, research findings summaries, web research summaries, and saving important discoveries.",
-  parameters: z.object({
+  inputSchema: z.object({
     title: z.string().describe("Note title"),
     content: z.string().describe("Note content in Markdown. Be detailed and include sources/references."),
     tags: z.array(z.string()).optional(),
@@ -333,7 +333,7 @@ export const createNote = tool({
 
 export const updateNote = tool({
   description: "Update an existing research note by its ID.",
-  parameters: z.object({
+  inputSchema: z.object({
     id: z.string().describe("Note ID"),
     title: z.string().optional(),
     content: z.string().optional(),
@@ -354,7 +354,7 @@ export const updateNote = tool({
 
 export const createRoadmapStep = tool({
   description: "Create a new roadmap step/phase entry. Use for /roadmap commands and research autopilot workflows. Always check existing phases first.",
-  parameters: z.object({
+  inputSchema: z.object({
     title: z.string().describe("Step title"),
     phase: z.number().int().describe("Phase number (1, 2, 3, ...)"),
     description: z.string().describe("Detailed description of this roadmap step"),
@@ -384,7 +384,7 @@ export const createRoadmapStep = tool({
 
 export const updateRoadmapStep = tool({
   description: "Update an existing roadmap step. Use for marking milestones complete, updating progress, or changing priority after research findings.",
-  parameters: z.object({
+  inputSchema: z.object({
     id: z.string().describe("Roadmap step ID"),
     title: z.string().optional(),
     description: z.string().optional(),
@@ -405,7 +405,7 @@ export const updateRoadmapStep = tool({
 
 export const completeRoadmapTask = tool({
   description: "Mark a specific roadmap task as completed within a roadmap step.",
-  parameters: z.object({
+  inputSchema: z.object({
     taskId: z.string().describe("The ID of the roadmap task to complete"),
   }),
   execute: async ({ taskId }) => {
@@ -422,7 +422,7 @@ export const completeRoadmapTask = tool({
 
 export const createExperiment = tool({
   description: "Create a new ML experiment entry. Use for /experiment commands and experiment planning workflows. Include all relevant hyperparameters.",
-  parameters: z.object({
+  inputSchema: z.object({
     name: z.string().describe("Experiment name"),
     baseModel: z.string().describe("Base model (e.g. 'TinyLlama/TinyLlama-1.1B-Chat-v1.0')"),
     description: z.string().optional(),
@@ -449,7 +449,7 @@ export const createExperiment = tool({
 
 export const updateExperiment = tool({
   description: "Update an existing experiment. Use to record results, update status, or add result summaries after analysis.",
-  parameters: z.object({
+  inputSchema: z.object({
     id: z.string(),
     name: z.string().optional(),
     description: z.string().optional(),
@@ -474,7 +474,7 @@ export const updateExperiment = tool({
 
 export const createDataset = tool({
   description: "Create a new dataset entry in the lab. Use for /dataset commands and dataset intelligence workflows. Include full metadata.",
-  parameters: z.object({
+  inputSchema: z.object({
     name: z.string(),
     description: z.string().optional(),
     datasetType: z.enum(["CODE", "TEXT", "INSTRUCTION", "QA", "MIXED"]),
@@ -498,7 +498,7 @@ export const createDataset = tool({
 
 export const updateDataset = tool({
   description: "Update an existing dataset. Use to update preprocessing status, add sample counts, or improve descriptions after dataset analysis.",
-  parameters: z.object({
+  inputSchema: z.object({
     id: z.string(),
     name: z.string().optional(),
     description: z.string().optional(),
@@ -522,7 +522,7 @@ export const updateDataset = tool({
 export const benchmarkModel = tool({
   description:
     "Record benchmark results for a model version and generate a benchmark report. Use when a model has been evaluated. Creates a structured benchmark documentation page and updates model metrics.",
-  parameters: z.object({
+  inputSchema: z.object({
     modelVersionId: z.string().describe("ID of the ModelVersion to benchmark"),
     bleuScore: z.number().optional().describe("BLEU score (0-100)"),
     pass1Score: z.number().optional().describe("HumanEval pass@1 score (0-100)"),
@@ -594,7 +594,7 @@ Generated: ${new Date().toISOString()}
 
 export const getModelLeaderboard = tool({
   description: "Retrieve the model leaderboard sorted by benchmark metrics. Use this to rank models and compare performance.",
-  parameters: z.object({
+  inputSchema: z.object({
     sortBy: z.enum(["bleuScore", "pass1Score", "humanEval", "mmluScore"]).optional().default("pass1Score"),
     limit: z.number().int().min(1).max(20).optional().default(10),
   }),
@@ -623,7 +623,7 @@ export const getModelLeaderboard = tool({
 export const crawlWeb = tool({
   description:
     "Fetch and read a public web page for research purposes. Use to retrieve papers, documentation, GitHub READMEs, or current research. Limit to 2 URLs per turn.",
-  parameters: z.object({
+  inputSchema: z.object({
     url: z.string().url().describe("Full HTTPS URL to fetch"),
     reason: z.string().optional().describe("Why you are fetching this URL"),
   }),
@@ -670,7 +670,7 @@ export const crawlWeb = tool({
 export const analyzeDatasetIntelligence = tool({
   description:
     "Analyze a dataset and produce intelligence: quality assessment, sample statistics, documentation, and experiment suggestions. This is the Dataset Intelligence automation workflow.",
-  parameters: z.object({
+  inputSchema: z.object({
     datasetId: z.string().describe("ID of the dataset to analyze"),
   }),
   execute: async ({ datasetId }) => {
@@ -712,7 +712,7 @@ export const analyzeDatasetIntelligence = tool({
 export const runResearchAutopilot = tool({
   description:
     "Execute a full research autopilot workflow for a given topic. Performs knowledge graph search, identifies gaps, and returns a structured research plan with specific actions to take. Use for 'start research for X' commands.",
-  parameters: z.object({
+  inputSchema: z.object({
     topic: z.string().describe("Research topic (e.g. 'mobile-optimized SLM models', 'quantization techniques')"),
     scope: z.array(z.enum(["roadmap", "experiments", "datasets", "documentation", "notes"])).optional().describe("Which areas to cover in the research plan"),
   }),

@@ -95,16 +95,16 @@ export async function POST(req: Request) {
       model = google(modelId)
     }
 
-    // Use AI SDK v4 streamText
+    // Use AI SDK v6 streamText
     const result = streamText({
       model,
       system: SYSTEM_PROMPT,
       messages,
       temperature: 0.7,
-      maxTokens: 2048,
+      maxOutputTokens: 2048,
     })
 
-    return result.toDataStreamResponse()
+    return result.toUIMessageStreamResponse()
   } catch (err) {
     console.error("Chat API error:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
