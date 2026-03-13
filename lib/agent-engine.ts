@@ -1,6 +1,6 @@
 /**
  * Prausdit Research Lab — Agent Engine
- * AI SDK v6.x (March 2026)
+ * AI SDK 6.x (March 2026) — npm package "ai" latest: 6.0.116
  *
  * Architecture:
  *   User Message
@@ -26,6 +26,9 @@
  *   { type: "text",        text }
  *   { type: "done" }
  *   { type: "error",       text }
+ *
+ * NOTE: toolCallStreaming option was REMOVED in AI SDK 5.0+
+ *       Tool call streaming is now always enabled by default.
  */
 
 import { streamText } from "ai"
@@ -254,7 +257,8 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
         const aiModel = await getModel(provider, model)
         let stepNum = 0
 
-        // AI SDK v6: use streamText with maxSteps for multi-step tool execution
+        // AI SDK 6: streamText with maxSteps for multi-step tool execution
+        // NOTE: toolCallStreaming was REMOVED in AI SDK 5+ — it is always on by default
         const result = streamText({
           model: aiModel,
           system: systemPrompt,
@@ -263,7 +267,6 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
           maxSteps: 20,
           maxRetries: 1,
           temperature: 0.65,
-          toolCallStreaming: true,
         })
 
         // Iterate fullStream for streaming chunks
