@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Enable React Compiler for automatic optimizations (stable in Next.js 16)
-  reactCompiler: true,
-  
   typescript: {
     ignoreBuildErrors: false,
   },
