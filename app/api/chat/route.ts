@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server"
-import { GoogleGenAI } from "@google/genai"
+import { streamText } from "ai"
+import { createGoogleGenerativeAI } from "@ai-sdk/google"
+import { createOpenAI } from "@ai-sdk/openai"
 import { prisma } from "@/lib/prisma"
 import { requireWriteAuth } from "@/lib/api-auth"
+
+export const maxDuration = 60
 
 const SYSTEM_PROMPT = `You are Prausdit Lab Assistant, an expert AI research assistant helping with the development of Protroit Agent and ProtroitOS.
 
@@ -35,112 +39,6 @@ async function getAISettings() {
   }
 }
 
-async function streamGemini(
-  message: string,
-  history: Array<{ role: string; content: string }>,
-  apiKey: string,
-  model: string,
-  contextDocs: string
-) {
-  const ai = new GoogleGenAI({ apiKey })
-  const contents: Array<{ role: string; parts: Array<{ text: string }> }> = []
-  for (const msg of (history || []).slice(-10)) {
-    contents.push({
-      role: msg.role === "assistant" ? "model" : "user",
-      parts: [{ text: msg.content }],
-    })
-  }
-  const userMessage = contextDocs ? `${message}\n\n${contextDocs}` : message
-  contents.push({ role: "user", parts: [{ text: userMessage }] })
-
-  const streamResult = await ai.models.generateContentStream({
-    model: model || "gemini-2.5-flash",
-    config: { systemInstruction: SYSTEM_PROMPT, maxOutputTokens: 2048, temperature: 0.7, topP: 0.9 },
-    contents,
-  })
-
-  const encoder = new TextEncoder()
-  return new ReadableStream({
-    async start(controller) {
-      try {
-        for await (const chunk of streamResult) {
-          const text = chunk.text
-          if (text) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`))
-        }
-      } catch {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Stream interrupted" })}\n\n`))
-      } finally {
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"))
-        controller.close()
-      }
-    },
-  })
-}
-
-async function streamOpenRouter(
-  message: string,
-  history: Array<{ role: string; content: string }>,
-  apiKey: string,
-  model: string,
-  contextDocs: string
-) {
-  const messages = [
-    { role: "system", content: SYSTEM_PROMPT },
-    ...(history || []).slice(-10).map(m => ({
-      role: m.role === "assistant" ? "assistant" : "user",
-      content: m.content,
-    })),
-    { role: "user", content: contextDocs ? `${message}\n\n${contextDocs}` : message },
-  ]
-
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://prausdit.app",
-      "X-Title": "Prausdit Research Lab",
-    },
-    body: JSON.stringify({ model, messages, stream: true, max_tokens: 2048, temperature: 0.7 }),
-  })
-
-  if (!res.ok) throw new Error(`OpenRouter error: ${res.status}`)
-
-  const encoder = new TextEncoder()
-  const reader = res.body?.getReader()
-  if (!reader) throw new Error("No stream body")
-
-  return new ReadableStream({
-    async start(controller) {
-      try {
-        let buffer = ""
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += new TextDecoder().decode(value)
-          const lines = buffer.split("\n")
-          buffer = lines.pop() || ""
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue
-            const data = line.slice(6).trim()
-            if (data === "[DONE]") continue
-            try {
-              const parsed = JSON.parse(data)
-              const text = parsed.choices?.[0]?.delta?.content
-              if (text) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`))
-            } catch { /* skip */ }
-          }
-        }
-      } catch {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Stream interrupted" })}\n\n`))
-      } finally {
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"))
-        controller.close()
-      }
-    },
-  })
-}
-
 export async function POST(req: Request) {
   const auth = await requireWriteAuth()
   if (!auth.ok) return auth.response
@@ -165,23 +63,48 @@ export async function POST(req: Request) {
       }
     } catch { /* ignore */ }
 
-    let readable: ReadableStream
+    // Build messages array
+    const messages = [
+      ...(history || []).slice(-10).map((m: { role: string; content: string }) => ({
+        role: m.role === "assistant" ? "assistant" as const : "user" as const,
+        content: m.content,
+      })),
+      { role: "user" as const, content: contextDocs ? `${message}\n\n${contextDocs}` : message },
+    ]
 
+    // Get the AI model
+    let model
     if (provider === "openrouter") {
       const apiKey = settings?.openrouterApiKey || process.env.OPENROUTER_API_KEY
       if (!apiKey) return NextResponse.json({ error: "OpenRouter API key not configured. Add it in Settings." }, { status: 500 })
-      const model = reqModel || settings?.selectedOpenRouterModels?.[0] || "mistralai/mistral-7b-instruct:free"
-      readable = await streamOpenRouter(message, history || [], apiKey, model, contextDocs)
+      const modelId = reqModel || settings?.selectedOpenRouterModels?.[0] || "mistralai/mistral-7b-instruct:free"
+      const openai = createOpenAI({
+        baseURL: "https://openrouter.ai/api/v1",
+        apiKey,
+        headers: {
+          "HTTP-Referer": "https://prausdit.app",
+          "X-Title": "Prausdit Research Lab",
+        },
+      })
+      model = openai(modelId)
     } else {
       const apiKey = settings?.geminiApiKey || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
       if (!apiKey) return NextResponse.json({ error: "Gemini API key not configured. Set GOOGLE_API_KEY or add it in Settings." }, { status: 500 })
-      const model = reqModel || settings?.geminiDefaultModel || "gemini-2.5-flash"
-      readable = await streamGemini(message, history || [], apiKey, model, contextDocs)
+      const modelId = reqModel || settings?.geminiDefaultModel || "gemini-2.5-flash"
+      const google = createGoogleGenerativeAI({ apiKey })
+      model = google(modelId)
     }
 
-    return new Response(readable, {
-      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+    // Use AI SDK v4 streamText
+    const result = streamText({
+      model,
+      system: SYSTEM_PROMPT,
+      messages,
+      temperature: 0.7,
+      maxTokens: 2048,
     })
+
+    return result.toDataStreamResponse()
   } catch (err) {
     console.error("Chat API error:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

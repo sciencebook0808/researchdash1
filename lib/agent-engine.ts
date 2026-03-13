@@ -1,16 +1,16 @@
 /**
- * Prausdit Research Lab — OpenClaw-Compatible Agent Engine
- * AI SDK v6.x (March 2026)
+ * Prausdit Research Lab — Agent Engine
+ * AI SDK v4.x (March 2026)
  *
- * Architecture mirrors OpenClaw's agent runtime:
+ * Architecture:
  *   User Message
  *     → Context injection (knowledge graph + history)
- *     → Model routing (Gemini / OpenRouter adapter)
- *     → Reasoning loop (streamText + stopWhen: stepCountIs)
+ *     → Model routing (Gemini / OpenRouter via AI Gateway)
+ *     → Reasoning loop (streamText + maxSteps)
  *     → Tool router (CRM APIs via Prisma)
  *     → SSE stream to UI
  *
- * Supports all OpenClaw-style workflows:
+ * Supports workflows:
  *   - Documentation automation
  *   - Roadmap autopilot
  *   - Dataset intelligence
@@ -28,7 +28,7 @@
  *   { type: "error",       text }
  */
 
-import { streamText, stepCountIs } from "ai"
+import { streamText } from "ai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createOpenAI } from "@ai-sdk/openai"
 import { prisma } from "./prisma"
@@ -50,11 +50,11 @@ export interface AgentOptions {
   systemContext?: string
 }
 
-// ─── OpenClaw-Style System Prompt ─────────────────────────────────────────────
+// ─── System Prompt ────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are **Prausdit Lab Agent** — the autonomous AI brain of the Prausdit Research Lab.
 
-You operate like OpenClaw: a reasoning agent that thinks step by step, calls tools to interact with the CRM, and completes complex research workflows autonomously.
+You operate as a reasoning agent that thinks step by step, calls tools to interact with the CRM, and completes complex research workflows autonomously.
 
 ## Mission
 Power the development of **Protroit Agent** (offline-first SLM AI for mobile/edge) and **ProtroitOS** (agentic operating system) by automating research workflows.
@@ -98,52 +98,6 @@ Power the development of **Protroit Agent** (offline-first SLM AI for mobile/edg
 ### Workflow Orchestration
 - \`run_research_autopilot\` — Execute full research planning workflow for any topic
 
-## Workflow Patterns
-
-### Documentation Automation
-When an experiment completes or the user asks to document something:
-1. search_internal_docs for existing related docs
-2. create_document with comprehensive technical content
-3. Confirm with doc ID and link
-
-### Roadmap Autopilot
-When user says a milestone is done or wants to plan next steps:
-1. search_internal_docs (sources: ["roadmap"]) to find current state
-2. update_roadmap_step to mark complete
-3. create_roadmap_step for next phase with tasks
-4. Summarise changes
-
-### Dataset Intelligence
-When asked to analyse a dataset:
-1. analyze_dataset to get full context
-2. crawl_web to research dataset type or similar datasets if needed
-3. update_dataset with improved description
-4. create_document with dataset intelligence report
-5. create_experiment to suggest a baseline experiment
-
-### Experiment Planning
-For "Plan experiments for X":
-1. run_research_autopilot to assess gaps
-2. search_internal_docs for related datasets
-3. create_experiment for each planned experiment (with hyperparams)
-4. create_roadmap_step to track training plan
-5. create_note with experiment rationale
-
-### Research Autopilot
-For "Start research for X" or "Research X":
-1. run_research_autopilot to analyse current state
-2. crawl_web for 1-2 authoritative sources
-3. create_note with research findings
-4. create_document with structured findings
-5. create_roadmap_step if new work is implied
-6. Optionally: create_experiment or create_dataset
-
-### Model Benchmarking
-For "Benchmark model X":
-1. get_model_leaderboard to see current rankings
-2. benchmark_model with scores → auto-generates report doc
-3. create_note with benchmark analysis
-
 ## AI Expertise
 - SLMs: TinyLlama, Phi-3-mini, Gemma-2B, Mistral-7B, Qwen-1.5B
 - Training: LoRA, QLoRA, GRPO, full fine-tune with trl/PEFT/transformers
@@ -161,7 +115,7 @@ For "Benchmark model X":
 - **Think out loud** — explain your reasoning before each tool call
 
 ## Response Style
-Rich Markdown with headings, tables, code blocks. When you create something, always confirm with: ✅ Created [Title] (ID: \`xyz\`)`
+Rich Markdown with headings, tables, code blocks. When you create something, always confirm with: Created [Title] (ID: \`xyz\`)`
 
 // ─── Provider Adapter ─────────────────────────────────────────────────────────
 
@@ -192,25 +146,25 @@ async function getModel(provider: "gemini" | "openrouter", modelId: string) {
 // ─── Tool Status Labels ───────────────────────────────────────────────────────
 
 const TOOL_LABELS: Record<string, string> = {
-  search_internal_docs:     "🔍 Searching knowledge base",
-  get_knowledge_graph:      "🕸️ Loading knowledge graph",
-  read_document:            "📖 Reading documentation",
-  create_document:          "📝 Creating documentation page",
-  update_document:          "✏️ Updating documentation",
-  create_note:              "🗒️ Saving research note",
-  update_note:              "✏️ Updating research note",
-  create_roadmap_step:      "🗺️ Creating roadmap step",
-  update_roadmap_step:      "🗺️ Updating roadmap",
-  complete_roadmap_task:    "✅ Completing roadmap task",
-  create_experiment:        "🧪 Creating experiment",
-  update_experiment:        "🧪 Updating experiment",
-  create_dataset:           "🗃️ Creating dataset entry",
-  update_dataset:           "🗃️ Updating dataset",
-  analyze_dataset:          "🔬 Analysing dataset intelligence",
-  benchmark_model:          "📊 Recording benchmark results",
-  get_model_leaderboard:    "🏆 Loading model leaderboard",
-  crawl_web:                "🌐 Fetching web content",
-  run_research_autopilot:   "🤖 Running research autopilot",
+  search_internal_docs:     "Searching knowledge base",
+  get_knowledge_graph:      "Loading knowledge graph",
+  read_document:            "Reading documentation",
+  create_document:          "Creating documentation page",
+  update_document:          "Updating documentation",
+  create_note:              "Saving research note",
+  update_note:              "Updating research note",
+  create_roadmap_step:      "Creating roadmap step",
+  update_roadmap_step:      "Updating roadmap",
+  complete_roadmap_task:    "Completing roadmap task",
+  create_experiment:        "Creating experiment",
+  update_experiment:        "Updating experiment",
+  create_dataset:           "Creating dataset entry",
+  update_dataset:           "Updating dataset",
+  analyze_dataset:          "Analysing dataset intelligence",
+  benchmark_model:          "Recording benchmark results",
+  get_model_leaderboard:    "Loading model leaderboard",
+  crawl_web:                "Fetching web content",
+  run_research_autopilot:   "Running research autopilot",
 }
 
 // ─── Workflow Intent Detection ────────────────────────────────────────────────
@@ -219,33 +173,33 @@ function detectWorkflowIntent(message: string): string {
   const lower = message.toLowerCase()
 
   if (/start research|research for|research on|investigate/i.test(message))
-    return "🔭 Research Autopilot activated — analysing knowledge graph and planning research workflow…"
+    return "Research Autopilot activated — analysing knowledge graph and planning research workflow..."
   if (/plan experiments?|create experiments? for|design experiments?/i.test(message))
-    return "🧪 Experiment Planner activated — analysing datasets and designing experiment suite…"
+    return "Experiment Planner activated — analysing datasets and designing experiment suite..."
   if (/benchmark|evaluate model|score model|rank model/i.test(message))
-    return "📊 Benchmark Automation activated — preparing evaluation pipeline…"
+    return "Benchmark Automation activated — preparing evaluation pipeline..."
   if (/analyse dataset|analyze dataset|dataset intelligence/i.test(message))
-    return "🔬 Dataset Intelligence activated — performing deep dataset analysis…"
+    return "Dataset Intelligence activated — performing deep dataset analysis..."
   if (/(training|pipeline|milestone|roadmap).*(done|complete|finished)|finished.*training/i.test(message))
-    return "🗺️ Roadmap Autopilot activated — updating milestones and planning next steps…"
+    return "Roadmap Autopilot activated — updating milestones and planning next steps..."
   if (/\/document|create doc|write doc|generate doc|document this/i.test(message))
-    return "📝 Documentation Automation activated — searching for existing docs first…"
+    return "Documentation Automation activated — searching for existing docs first..."
   if (/\/experiment/i.test(message))
-    return "🧪 Experiment creation mode — checking related experiments and datasets…"
+    return "Experiment creation mode — checking related experiments and datasets..."
   if (/\/dataset/i.test(message))
-    return "🗃️ Dataset registration mode — checking for similar datasets…"
+    return "Dataset registration mode — checking for similar datasets..."
   if (/\/roadmap/i.test(message))
-    return "🗺️ Roadmap mode — checking existing phases…"
+    return "Roadmap mode — checking existing phases..."
   if (/\/note/i.test(message))
-    return "🗒️ Research note mode — saving your note…"
+    return "Research note mode — saving your note..."
   if (/leaderboard|ranking|best model|top model/i.test(message))
-    return "🏆 Loading model leaderboard…"
+    return "Loading model leaderboard..."
   if (lower.includes("@documentation") || lower.includes("@docs"))
-    return "📖 Fetching referenced documentation…"
+    return "Fetching referenced documentation..."
   if (lower.includes("search") || lower.includes("find") || lower.includes("look up"))
-    return "🔍 Searching knowledge base…"
+    return "Searching knowledge base..."
 
-  return "🤔 Agent thinking…"
+  return "Agent thinking..."
 }
 
 // ─── Main Agent Runner ────────────────────────────────────────────────────────
@@ -259,7 +213,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
   }
 
   const messages: Array<{ role: "user" | "assistant"; content: string }> = [
-    ...history.slice(-14), // Keep more history for workflow context
+    ...history.slice(-14),
     { role: "user", content: message },
   ]
 
@@ -278,52 +232,50 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
         const aiModel = await getModel(provider, model)
         let stepNum = 0
 
-        // AI SDK v6: use fullStream iteration for streaming chunks
+        // AI SDK v4: use streamText with maxSteps for multi-step tool execution
         const result = streamText({
           model: aiModel,
           system: systemPrompt,
           messages,
           tools: agentTools,
-          stopWhen: stepCountIs(20),
+          maxSteps: 20,
           maxRetries: 1,
           temperature: 0.65,
+          toolCallStreaming: true,
         })
 
-        // Iterate fullStream — emits all chunk types (tool-call, tool-result, text-delta)
+        // Iterate fullStream for streaming chunks
         for await (const chunk of result.fullStream) {
           try {
             if (chunk.type === "tool-call") {
               stepNum++
-              const label = TOOL_LABELS[chunk.toolName] || `⚙️ Calling ${chunk.toolName}`
+              const label = TOOL_LABELS[chunk.toolName] || `Calling ${chunk.toolName}`
               controller.enqueue(evt({
                 type: "tool_call",
                 tool: chunk.toolName,
                 text: label,
-                args: chunk.input,
+                args: chunk.args,
                 step: stepNum,
               }))
             }
 
             if (chunk.type === "tool-result") {
-              // AI SDK v6: result property on tool-result chunks
-              const rawResult = (chunk as Record<string, unknown>)["result"]
-                ?? (chunk as Record<string, unknown>)["output"]
-              const resultPreview = typeof rawResult === "object"
-                ? JSON.stringify(rawResult).slice(0, 200)
-                : String(rawResult ?? "").slice(0, 200)
+              const resultPreview = typeof chunk.result === "object"
+                ? JSON.stringify(chunk.result).slice(0, 200)
+                : String(chunk.result ?? "").slice(0, 200)
               controller.enqueue(evt({
                 type: "tool_result",
                 tool: chunk.toolName,
-                text: `✓ ${TOOL_LABELS[chunk.toolName] || chunk.toolName} complete`,
-                result: rawResult,
+                text: `${TOOL_LABELS[chunk.toolName] || chunk.toolName} complete`,
+                result: chunk.result,
                 resultPreview,
                 step: stepNum,
               }))
-              controller.enqueue(evt({ type: "status", text: "💭 Analysing results…", step: stepNum }))
+              controller.enqueue(evt({ type: "status", text: "Analysing results...", step: stepNum }))
             }
 
-            if (chunk.type === "text-delta" && chunk.text) {
-              controller.enqueue(evt({ type: "text", text: chunk.text }))
+            if (chunk.type === "text-delta" && chunk.textDelta) {
+              controller.enqueue(evt({ type: "text", text: chunk.textDelta }))
             }
           } catch { /* ignore serialization errors on individual chunks */ }
         }
@@ -342,7 +294,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
   })
 }
 
-// ─── Workflow Trigger Helpers (for API routes) ────────────────────────────────
+// ─── Workflow Trigger Helpers ─────────────────────────────────────────────────
 
 /** Run a specific workflow with pre-loaded context */
 export function runWorkflow(

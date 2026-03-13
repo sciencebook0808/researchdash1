@@ -16,10 +16,10 @@ export default function GlobalError({
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
-      <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-4">
+      <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-4" aria-hidden="true">
         <AlertTriangle className="w-7 h-7 text-red-400" />
       </div>
-      <h2 className="text-lg font-semibold text-foreground mb-1">Something went wrong</h2>
+      <h1 className="text-lg font-semibold text-foreground mb-1" role="alert">Something went wrong</h1>
       <p className="text-sm text-muted-foreground mb-1 max-w-sm">
         {error.message || "An unexpected error occurred. Please try again."}
       </p>
