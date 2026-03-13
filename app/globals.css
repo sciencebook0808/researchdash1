@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @config "../tailwind.config.ts";
 
+/* Tailwind v4: Define font families inline theme */
+@theme inline {
+  --font-sans: var(--font-dm-sans), "DM Sans", system-ui, sans-serif;
+  --font-mono: var(--font-space-mono), "Space Mono", "Fira Code", monospace;
+}
+
 @layer base {
   :root {
     --background: 0 0% 4%;

@@ -120,11 +120,26 @@ Rich Markdown with headings, tables, code blocks. When you create something, alw
 // ─── Provider Adapter ─────────────────────────────────────────────────────────
 
 async function getModel(provider: "gemini" | "openrouter", modelId: string) {
-  const settings = await prisma.aISettings.findFirst().catch(() => null)
+  // Safely fetch settings - handle database unavailability gracefully
+  let settings: Awaited<ReturnType<typeof prisma.aISettings.findFirst>> | null = null
+  try {
+    settings = await prisma.aISettings.findFirst()
+  } catch (dbErr) {
+    console.warn("[agent-engine] Could not fetch AI settings from database:", 
+      dbErr instanceof Error ? dbErr.message : String(dbErr))
+    // Continue with environment variables only
+  }
 
   if (provider === "openrouter") {
     const apiKey = settings?.openrouterApiKey || process.env.OPENROUTER_API_KEY
-    if (!apiKey) throw new Error("OpenRouter API key not configured. Add it in Settings → Manage API.")
+    if (!apiKey) {
+      throw new Error(
+        "OpenRouter API key not configured.\n\n" +
+        "To fix this:\n" +
+        "1. Add OPENROUTER_API_KEY to your environment variables, or\n" +
+        "2. Configure it in Settings → Manage API (requires database connection)"
+      )
+    }
     const openai = createOpenAI({
       baseURL: "https://openrouter.ai/api/v1",
       apiKey,
@@ -138,7 +153,14 @@ async function getModel(provider: "gemini" | "openrouter", modelId: string) {
 
   // Gemini (default)
   const apiKey = settings?.geminiApiKey || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
-  if (!apiKey) throw new Error("Gemini API key not configured. Set GOOGLE_API_KEY or add it in Settings.")
+  if (!apiKey) {
+    throw new Error(
+      "Gemini API key not configured.\n\n" +
+      "To fix this:\n" +
+      "1. Set GOOGLE_API_KEY in your environment variables (get one at https://aistudio.google.com/app/apikey), or\n" +
+      "2. Configure it in Settings → Manage API (requires database connection)"
+    )
+  }
   const google = createGoogleGenerativeAI({ apiKey })
   return google(modelId)
 }

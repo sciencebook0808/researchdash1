@@ -17,7 +17,7 @@
  */
 
 import { auth, currentUser } from "@clerk/nextjs/server"
-import { prisma }            from "@/lib/prisma"
+import { prisma, isDatabaseConfigured } from "@/lib/prisma"
 import { NextResponse }      from "next/server"
 
 export const WRITER_ROLES = new Set(["super_admin", "admin", "developer"])
@@ -87,6 +87,18 @@ export async function requireWriteAuth(): Promise<AuthResult> {
     }
 
     // ── Step 3: DB role lookup for everyone else ──────────────────────────
+    // Check if database is configured first
+    if (!isDatabaseConfigured()) {
+      console.warn("[api-auth] Database not configured - cannot verify role for non-super-admin")
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Database not configured. Only super admin access is available without a database." },
+          { status: 503 }
+        ),
+      }
+    }
+
     let dbUser
     try {
       dbUser = await prisma.user.findUnique({ where: { clerkId: userId } })

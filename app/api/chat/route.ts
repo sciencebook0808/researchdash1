@@ -34,7 +34,9 @@ When answering questions:
 async function getAISettings() {
   try {
     return await prisma.aISettings.findFirst()
-  } catch {
+  } catch (err) {
+    console.warn("[/api/chat] Could not fetch AI settings:", 
+      err instanceof Error ? err.message : String(err))
     return null
   }
 }
@@ -76,7 +78,11 @@ export async function POST(req: Request) {
     let model
     if (provider === "openrouter") {
       const apiKey = settings?.openrouterApiKey || process.env.OPENROUTER_API_KEY
-      if (!apiKey) return NextResponse.json({ error: "OpenRouter API key not configured. Add it in Settings." }, { status: 500 })
+      if (!apiKey) {
+        return NextResponse.json({ 
+          error: "OpenRouter API key not configured. Add OPENROUTER_API_KEY to environment variables or configure in Settings." 
+        }, { status: 500 })
+      }
       const modelId = reqModel || settings?.selectedOpenRouterModels?.[0] || "mistralai/mistral-7b-instruct:free"
       const openai = createOpenAI({
         baseURL: "https://openrouter.ai/api/v1",
@@ -89,7 +95,11 @@ export async function POST(req: Request) {
       model = openai(modelId)
     } else {
       const apiKey = settings?.geminiApiKey || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
-      if (!apiKey) return NextResponse.json({ error: "Gemini API key not configured. Set GOOGLE_API_KEY or add it in Settings." }, { status: 500 })
+      if (!apiKey) {
+        return NextResponse.json({ 
+          error: "Gemini API key not configured. Set GOOGLE_API_KEY environment variable (get one at https://aistudio.google.com/app/apikey) or configure in Settings." 
+        }, { status: 500 })
+      }
       const modelId = reqModel || settings?.geminiDefaultModel || "gemini-2.5-flash"
       const google = createGoogleGenerativeAI({ apiKey })
       model = google(modelId)

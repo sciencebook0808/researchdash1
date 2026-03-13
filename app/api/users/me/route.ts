@@ -17,7 +17,7 @@
 
 import { NextResponse } from "next/server"
 import { auth, currentUser } from "@clerk/nextjs/server"
-import { prisma }             from "@/lib/prisma"
+import { prisma, isDatabaseConfigured } from "@/lib/prisma"
 import { getSuperAdminEmail } from "@/lib/api-auth"
 
 export async function GET() {
@@ -44,6 +44,27 @@ export async function GET() {
       email.toLowerCase() === superAdminEmail.toLowerCase()
 
     // 3. DB upsert / sync
+    // If database is not configured, super admin still works; others get fallback
+    if (!isDatabaseConfigured()) {
+      if (isSuperAdmin) {
+        console.warn("[/api/users/me] Database not configured - returning super_admin fallback")
+        return NextResponse.json({
+          id:        "super_admin_fallback",
+          clerkId:   userId,
+          email,
+          name:      name ?? null,
+          imageUrl:  imageUrl ?? null,
+          role:      "super_admin",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+      }
+      return NextResponse.json(
+        { error: "Database not configured. Only super admin access is available." },
+        { status: 503 }
+      )
+    }
+
     try {
       let dbUser = await prisma.user.findUnique({ where: { clerkId: userId } })
 

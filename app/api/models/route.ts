@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { prisma, isDatabaseConfigured } from "@/lib/prisma"
 import { requireWriteAuth } from "@/lib/api-auth"
 
 export async function GET() {
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json([])
+  }
+
   try {
     const models = await prisma.modelVersion.findMany({
       orderBy: { createdAt: "desc" },
@@ -22,6 +26,10 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json({ error: "Database not configured" }, { status: 503 })
+  }
+
   const auth = await requireWriteAuth()
   if (!auth.ok) return auth.response
 

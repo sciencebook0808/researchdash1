@@ -1,15 +1,35 @@
-import { prisma } from "@/lib/prisma"
+import { prisma, isDatabaseConfigured } from "@/lib/prisma"
 import { formatBytes, formatNumber, getStatusColor } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import {
   FlaskConical, Database, Package, TrendingUp, ArrowRight,
-  CheckCircle2, Clock, Circle, Target, HardDrive, Zap, GitBranch
+  CheckCircle2, Clock, Circle, Target, HardDrive, Zap, GitBranch,
+  AlertTriangle
 } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
 async function getDashboardData() {
+  // Check if database is configured before attempting queries
+  if (!isDatabaseConfigured()) {
+    console.warn("[Dashboard] Database not configured - showing empty state")
+    return {
+      roadmapSteps: [],
+      datasets: [],
+      experiments: [],
+      models: [],
+      completedSteps: 0,
+      inProgressSteps: 0,
+      progressPct: 0,
+      totalSamples: 0,
+      latestModel: undefined,
+      totalTasks: 0,
+      completedTasks: 0,
+      databaseError: "Database not configured. Set DATABASE_URL to enable data features.",
+    }
+  }
+
   try {
     const [roadmapSteps, datasets, experiments, models] = await Promise.all([
       prisma.roadmapStep.findMany({ include: { tasks: true } }),
@@ -26,9 +46,10 @@ async function getDashboardData() {
     const totalSamples = datasets.reduce((s, d) => s + (d.numSamples || 0), 0)
     const latestModel = models[0]
 
-    return { roadmapSteps, datasets, experiments, models, completedSteps, inProgressSteps, progressPct, totalSamples, latestModel, totalTasks, completedTasks }
+    return { roadmapSteps, datasets, experiments, models, completedSteps, inProgressSteps, progressPct, totalSamples, latestModel, totalTasks, completedTasks, databaseError: null as string | null }
   } catch (error) {
     console.error("Dashboard data error:", error)
+    const errorMessage = error instanceof Error ? error.message : "Unknown database error"
     return {
       roadmapSteps: [] as Awaited<ReturnType<typeof prisma.roadmapStep.findMany<{ include: { tasks: true } }>>>,
       datasets: [] as Awaited<ReturnType<typeof prisma.dataset.findMany>>,
@@ -37,6 +58,7 @@ async function getDashboardData() {
       completedSteps: 0, inProgressSteps: 0, progressPct: 0,
       totalSamples: 0, latestModel: undefined as Awaited<ReturnType<typeof prisma.modelVersion.findMany>>[0] | undefined,
       totalTasks: 0, completedTasks: 0,
+      databaseError: `Database error: ${errorMessage}`,
     }
   }
 }
@@ -88,6 +110,20 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* Database configuration warning */}
+      {data.databaseError && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[13px] font-semibold text-amber-300">Database Not Configured</p>
+            <p className="text-[12px] text-muted-foreground mt-1">{data.databaseError}</p>
+            <p className="text-[11px] text-muted-foreground mt-2">
+              To enable data features, add <code className="px-1 py-0.5 bg-muted rounded text-amber-400">DATABASE_URL</code> to your environment variables.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Page header */}
       <div>
         <div className="flex items-center gap-2 text-[12px] text-muted-foreground font-mono mb-2">

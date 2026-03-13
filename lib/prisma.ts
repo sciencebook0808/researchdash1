@@ -9,26 +9,41 @@
  *
  * Import path: generated/prisma/client (Prisma v7+ requires explicit output in schema)
  * Connection priority: POSTGRES_PRISMA_URL → POSTGRES_URL → DATABASE_URL
+ *
+ * SAFETY:
+ *   If no DATABASE_URL is configured, this module exports a stub Prisma client
+ *   that throws clear developer errors instead of crashing the application.
  */
 
-import { PrismaClient } from "../generated/prisma/client"
-import { PrismaPg }     from "@prisma/adapter-pg"
 import type { PoolConfig } from "pg"
+
+// ─── Conditional imports - only load heavy modules if DB is configured ───────
+
+let PrismaClient: typeof import("../generated/prisma/client").PrismaClient
+let PrismaPg: typeof import("@prisma/adapter-pg").PrismaPg
+
+// ─── Check if database is configured ─────────────────────────────────────────
+
+function getDatabaseUrl(): string | null {
+  const url =
+    process.env.POSTGRES_PRISMA_URL?.trim() ||
+    process.env.POSTGRES_URL?.trim() ||
+    process.env.DATABASE_URL?.trim()
+  return url || null
+}
+
+const DATABASE_URL = getDatabaseUrl()
+const IS_DATABASE_CONFIGURED = !!DATABASE_URL
 
 // ─── connection string resolution ───────────────────────────────────────────
 
 function getRawUrl(): string {
-  const url =
-    process.env.POSTGRES_PRISMA_URL?.trim() ||
-    process.env.POSTGRES_URL?.trim()        ||
-    process.env.DATABASE_URL?.trim()
-
-  if (!url) {
+  if (!DATABASE_URL) {
     throw new Error(
-      "No DB URL found. Set POSTGRES_PRISMA_URL, POSTGRES_URL, or DATABASE_URL."
+      "[Prisma] Database not configured. Set POSTGRES_PRISMA_URL, POSTGRES_URL, or DATABASE_URL environment variable."
     )
   }
-  return url
+  return DATABASE_URL
 }
 
 // ─── build PoolConfig without connectionString (bypasses SSL override bug) ──
@@ -58,9 +73,44 @@ function buildPoolConfig(): PoolConfig {
   }
 }
 
-// ─── singleton ───────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-function createPrismaClient(): PrismaClient {
+type PrismaClientType = import("../generated/prisma/client").PrismaClient
+
+// ─── Check if Prisma client is generated ─────────────────────────────────────
+
+let PRISMA_CLIENT_AVAILABLE = false
+try {
+  require.resolve("../generated/prisma/client")
+  PRISMA_CLIENT_AVAILABLE = true
+} catch {
+  // Prisma client not generated yet - this is expected before first `prisma generate`
+  console.warn(
+    "[Prisma] Generated client not found. Run 'npx prisma generate' to create it."
+  )
+}
+
+// ─── Lazy-load singleton ─────────────────────────────────────────────────────
+
+function createPrismaClient(): PrismaClientType {
+  if (!PRISMA_CLIENT_AVAILABLE) {
+    throw new Error(
+      "[Prisma] Generated client not found. Run 'npx prisma generate' first."
+    )
+  }
+
+  // Lazy load modules only when creating the client
+  if (!PrismaClient) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const prismaModule = require("../generated/prisma/client")
+    PrismaClient = prismaModule.PrismaClient
+  }
+  if (!PrismaPg) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const adapterModule = require("@prisma/adapter-pg")
+    PrismaPg = adapterModule.PrismaPg
+  }
+
   return new PrismaClient({
     adapter: new PrismaPg(buildPoolConfig()),
     log: process.env.NODE_ENV === "development"
@@ -69,8 +119,62 @@ function createPrismaClient(): PrismaClient {
   })
 }
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined }
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClientType | undefined }
 
-export const prisma: PrismaClient = globalForPrisma.prisma ?? createPrismaClient()
+// Only create prisma client if database is configured and client is available
+function getPrismaClient(): PrismaClientType {
+  if (!IS_DATABASE_CONFIGURED || !PRISMA_CLIENT_AVAILABLE) {
+    // Return a proxy that throws helpful errors when database is not configured
+    return new Proxy({} as PrismaClientType, {
+      get(_target, prop) {
+        if (prop === "then" || prop === "catch" || prop === "finally") {
+          return undefined // Allow awaiting to work without error
+        }
+        if (typeof prop === "string" && !prop.startsWith("_")) {
+          const errorMsg = !IS_DATABASE_CONFIGURED
+              ? `[Prisma] Database not configured. Set DATABASE_URL, POSTGRES_URL, or POSTGRES_PRISMA_URL environment variable.`
+              : `[Prisma] Generated client not found. Run 'npx prisma generate' first.`
+          return new Proxy(() => {}, {
+            get() {
+              throw new Error(`${errorMsg} Cannot access prisma.${prop}.`)
+            },
+            apply() {
+              throw new Error(`${errorMsg} Cannot call prisma.${prop}().`)
+            },
+          })
+        }
+        return undefined
+      },
+    })
+  }
+  return globalForPrisma.prisma ?? createPrismaClient()
+}
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
+export const prisma: PrismaClientType = getPrismaClient()
+
+if (process.env.NODE_ENV !== "production" && IS_DATABASE_CONFIGURED) {
+  globalForPrisma.prisma = prisma
+}
+
+// ─── Helper to check if database is ready ────────────────────────────────────
+
+export function isDatabaseConfigured(): boolean {
+  return IS_DATABASE_CONFIGURED && PRISMA_CLIENT_AVAILABLE
+}
+
+/**
+ * Safe wrapper for database operations.
+ * Returns null instead of throwing if the database is not configured.
+ */
+export async function withDatabase<T>(
+  operation: () => Promise<T>
+): Promise<T | null> {
+  if (!IS_DATABASE_CONFIGURED) {
+    console.warn(
+      "[Prisma] Database operation skipped: no database URL configured. " +
+      "Set DATABASE_URL, POSTGRES_URL, or POSTGRES_PRISMA_URL to enable database features."
+    )
+    return null
+  }
+  return operation()
+}

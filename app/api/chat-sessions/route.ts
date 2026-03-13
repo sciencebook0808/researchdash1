@@ -8,7 +8,7 @@
 
 import { NextResponse } from "next/server"
 import { auth, currentUser } from "@clerk/nextjs/server"
-import { prisma } from "@/lib/prisma"
+import { prisma, isDatabaseConfigured } from "@/lib/prisma"
 
 const ALLOWED_ROLES = new Set(["super_admin", "admin", "developer"])
 const PAGE_SIZE = 30
@@ -69,6 +69,17 @@ async function resolveUser(userId: string) {
 
 export async function GET(req: Request) {
   try {
+    // Early check for database availability
+    if (!isDatabaseConfigured()) {
+      return NextResponse.json({ 
+        sessions: [], 
+        total: 0, 
+        page: 1, 
+        pageSize: PAGE_SIZE,
+        warning: "Database not configured. Chat sessions require a database connection."
+      })
+    }
+
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -131,6 +142,12 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    if (!isDatabaseConfigured()) {
+      return NextResponse.json({ 
+        error: "Database not configured. Chat sessions require a database connection." 
+      }, { status: 503 })
+    }
+
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
