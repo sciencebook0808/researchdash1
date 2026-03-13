@@ -1,13 +1,14 @@
 "use client"
 
-import { useEditor, EditorContent, BubbleMenu } from "@tiptap/react"
+import { useEditor, EditorContent } from "@tiptap/react"
+import { BubbleMenu } from "@tiptap/react/menus"
 import StarterKit from "@tiptap/starter-kit"
 import Heading from "@tiptap/extension-heading"
 import Placeholder from "@tiptap/extension-placeholder"
 import Underline from "@tiptap/extension-underline"
 import Link from "@tiptap/extension-link"
 import Image from "@tiptap/extension-image"
-import TextStyle from "@tiptap/extension-text-style"
+import { TextStyle } from "@tiptap/extension-text-style"
 import Typography from "@tiptap/extension-typography"
 import { cn } from "@/lib/utils"
 import {
@@ -233,7 +234,7 @@ export function RichTextEditor({ content, onChange, placeholder = "Start writing
       </div>
 
       {/* Bubble menu for selected text */}
-      <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>
+      <BubbleMenu editor={editor} options={{ placement: 'top' }}>
         <div className="flex items-center gap-0.5 px-2 py-1.5 rounded-lg border border-border bg-card shadow-lg">
           <ToolbarBtn
             onClick={() => editor.chain().focus().toggleBold().run()}

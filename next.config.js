@@ -3,10 +3,6 @@ const nextConfig = {
   // Enable React Compiler for automatic optimizations (stable in Next.js 16)
   reactCompiler: true,
   
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  
   typescript: {
     ignoreBuildErrors: false,
   },
