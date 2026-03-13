@@ -8,7 +8,6 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate deploy",
     "db:generate": "prisma generate",
@@ -21,6 +20,7 @@
     "@ai-sdk/react": "^3.0.0",
     "@clerk/nextjs": "^7.0.4",
     "@clerk/themes": "^2.2.0",
+    "@floating-ui/dom": "^1.6.0",
     "@google/genai": "^1.44.0",
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
@@ -71,7 +71,8 @@
     "recharts": "^2.15.3",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.6.0",
-    "zod": "^3.24.0"
+    "zod": "^3.24.0",
+    "prisma": "^7.5.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.0",
@@ -79,12 +80,9 @@
     "@types/pg": "^8.11.11",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "autoprefixer": "^10.4.21",
-    "babel-plugin-react-compiler": "^19.0.0",
     "eslint": "^9.22.0",
     "eslint-config-next": "16.1.6",
     "postcss": "^8.5.3",
-    "prisma": "^7.5.0",
     "tailwindcss": "^4.1.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3"

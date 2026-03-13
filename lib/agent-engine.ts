@@ -31,7 +31,7 @@
  *       Tool call streaming is now always enabled by default.
  */
 
-import { streamText } from "ai"
+import { streamText, stepCountIs } from "ai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createOpenAI } from "@ai-sdk/openai"
 import { prisma } from "./prisma"
@@ -264,7 +264,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
           system: systemPrompt,
           messages,
           tools: agentTools,
-          maxSteps: 20,
+          stopWhen: stepCountIs(20),
           maxRetries: 1,
           temperature: 0.65,
         })
@@ -279,28 +279,28 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
                 type: "tool_call",
                 tool: chunk.toolName,
                 text: label,
-                args: chunk.args,
+                args: chunk.input,
                 step: stepNum,
               }))
             }
 
             if (chunk.type === "tool-result") {
-              const resultPreview = typeof chunk.result === "object"
-                ? JSON.stringify(chunk.result).slice(0, 200)
-                : String(chunk.result ?? "").slice(0, 200)
+              const resultPreview = typeof chunk.output === "object"
+                ? JSON.stringify(chunk.output).slice(0, 200)
+                : String(chunk.output ?? "").slice(0, 200)
               controller.enqueue(evt({
                 type: "tool_result",
                 tool: chunk.toolName,
                 text: `${TOOL_LABELS[chunk.toolName] || chunk.toolName} complete`,
-                result: chunk.result,
+                result: chunk.output,
                 resultPreview,
                 step: stepNum,
               }))
               controller.enqueue(evt({ type: "status", text: "Analysing results...", step: stepNum }))
             }
 
-            if (chunk.type === "text-delta" && chunk.textDelta) {
-              controller.enqueue(evt({ type: "text", text: chunk.textDelta }))
+            if (chunk.type === "text-delta" && chunk.text) {
+              controller.enqueue(evt({ type: "text", text: chunk.text }))
             }
           } catch { /* ignore serialization errors on individual chunks */ }
         }
