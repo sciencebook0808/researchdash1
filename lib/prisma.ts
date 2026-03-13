@@ -1,16 +1,13 @@
 /**
- * lib/prisma.ts — Prisma ORM v7 singleton for Vercel + Supabase
- * ─────────────────────────────────────────────────────────────
- * THE SSL FIX (prisma/prisma#28344, #29060):
- *   Official Prisma 7 docs say: `new PrismaPg({ connectionString, ssl: { rejectUnauthorized: false } })`
- *   BUT on Supabase the connection string contains ?sslmode=require which takes
- *   precedence and OVERRIDES the ssl object — causing "self-signed cert in chain".
+ * lib/prisma.ts — Prisma ORM v7.5 singleton for Vercel + PostgreSQL
+ * ─────────────────────────────────────────────────────────────────
+ * Compatible with: Neon, Supabase, AWS RDS, Azure PostgreSQL, Google Cloud SQL, Aiven
  *
- *   Solution confirmed by prisma/prisma#28344:
+ * SSL Configuration:
  *   Parse the URL manually → build pg.PoolConfig WITHOUT connectionString
- *   so our ssl config is the ONLY ssl source.
+ *   so our ssl config is the ONLY ssl source (avoids sslmode override issues).
  *
- * Import path: generated/prisma/client (Prisma v7 requires explicit output in schema)
+ * Import path: generated/prisma/client (Prisma v7+ requires explicit output in schema)
  * Connection priority: POSTGRES_PRISMA_URL → POSTGRES_URL → DATABASE_URL
  */
 

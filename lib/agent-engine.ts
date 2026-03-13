@@ -1,5 +1,6 @@
 /**
- * Prausdit Research Lab — OpenClaw-Compatible Agent Engine (v6)
+ * Prausdit Research Lab — OpenClaw-Compatible Agent Engine
+ * AI SDK v6.x (March 2026)
  *
  * Architecture mirrors OpenClaw's agent runtime:
  *   User Message
@@ -277,7 +278,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
         const aiModel = await getModel(provider, model)
         let stepNum = 0
 
-        // AI SDK v5: use fullStream iteration (replaces onChunk pattern)
+        // AI SDK v6: use fullStream iteration for streaming chunks
         const result = streamText({
           model: aiModel,
           system: systemPrompt,
@@ -288,7 +289,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
           temperature: 0.65,
         })
 
-        // Iterate fullStream — emits all chunk types in SDK v5 (tool-call, tool-result, text-delta)
+        // Iterate fullStream — emits all chunk types (tool-call, tool-result, text-delta)
         for await (const chunk of result.fullStream) {
           try {
             if (chunk.type === "tool-call") {
@@ -304,7 +305,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
             }
 
             if (chunk.type === "tool-result") {
-              // SDK v5: result or output property on fullStream tool-result chunks
+              // AI SDK v6: result property on tool-result chunks
               const rawResult = (chunk as Record<string, unknown>)["result"]
                 ?? (chunk as Record<string, unknown>)["output"]
               const resultPreview = typeof rawResult === "object"

@@ -15,20 +15,15 @@
  * support DDL statements.
  */
 import "dotenv/config"
-import { defineConfig, env } from "prisma/config"
+import { defineConfig } from "prisma/config"
 
 // For migrations: prefer DATABASE_URL (direct), fall back to pooled URL
 const migrationUrl =
   process.env.DATABASE_URL?.trim() ||
   process.env.POSTGRES_PRISMA_URL?.trim() ||
-  process.env.POSTGRES_URL?.trim()
-
-if (!migrationUrl) {
-  console.warn(
-    "[prisma.config.ts] WARNING: No database URL found. " +
-    "Set DATABASE_URL or POSTGRES_PRISMA_URL before running migrations."
-  )
-}
+  process.env.POSTGRES_URL?.trim() ||
+  // Fallback placeholder to allow prisma generate to succeed without a real DB
+  "postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -37,6 +32,6 @@ export default defineConfig({
     seed: "tsx prisma/seed.ts",
   },
   datasource: {
-    url: env("DATABASE_URL"),
+    url: migrationUrl,
   },
 })
