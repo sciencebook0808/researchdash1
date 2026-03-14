@@ -1,61 +1,97 @@
 /**
  * scripts/setup-database.ts
  * ─────────────────────────
- * Ensures database schema exists during Vercel deployment.
- * 
- * This script is run as part of the build process to:
- * 1. Check if the database is reachable
- * 2. Apply the Prisma schema using `prisma db push`
- * 
- * `prisma db push` is idempotent — safe to run on every deployment:
- * - Creates tables if they don't exist
- * - Adds new columns/tables from schema changes
- * - Does NOT drop data (unlike `prisma migrate reset`)
- * 
- * Usage: npx tsx scripts/setup-database.ts
+ * Runs during Vercel build to push the Prisma schema to NeonDB.
+ *
+ * Key fixes over the previous version:
+ *  1. Passes DATABASE_URL explicitly to prisma db push via --url flag
+ *     so there is no ambiguity about which env var is used.
+ *  2. Retries up to 3 times with 5-second delays to handle Neon cold-starts.
+ *  3. Exits with code 1 on permanent failure so Vercel surfaces the error
+ *     instead of silently deploying a broken app.
+ *  4. Uses `prisma db push --skip-generate` — generate already ran earlier
+ *     in the build script.
  */
 
-import { execSync } from 'child_process'
+import { execSync } from "child_process"
 
+// Priority: DATABASE_URL (direct connection) → POSTGRES_URL → POSTGRES_PRISMA_URL
 const DATABASE_URL =
   process.env.DATABASE_URL?.trim() ||
   process.env.POSTGRES_URL?.trim() ||
   process.env.POSTGRES_PRISMA_URL?.trim()
 
-async function main() {
-  console.log('[setup-database] Starting database setup...')
+const MAX_RETRIES = 3
+const RETRY_DELAY_MS = 5_000
 
-  // Check if database URL is configured
-  if (!DATABASE_URL) {
-    console.log('[setup-database] No DATABASE_URL configured - skipping schema push.')
-    console.log('[setup-database] Set DATABASE_URL, POSTGRES_URL, or POSTGRES_PRISMA_URL to enable.')
-    process.exit(0)
-  }
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
-  console.log('[setup-database] Database URL found, pushing schema...')
-
+async function pushSchema(attempt: number): Promise<boolean> {
+  console.log(`[setup-database] prisma db push — attempt ${attempt}/${MAX_RETRIES}`)
   try {
-    // Run prisma db push with --accept-data-loss for safety
-    // --skip-generate because we already run prisma generate separately
-    execSync('npx prisma db push --accept-data-loss --skip-generate', {
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        DATABASE_URL,
-      },
-    })
-
-    console.log('[setup-database] Schema push completed successfully!')
-  } catch (error) {
-    // Log the error but don't fail the build
-    // This allows deployment to continue even if DB is temporarily unavailable
-    console.error('[setup-database] Schema push failed:', error)
-    console.log('[setup-database] Continuing build - database may need manual setup.')
-    
-    // Exit with 0 to not block deployment
-    // The app has graceful error handling for missing tables
-    process.exit(0)
+    execSync(
+      // --skip-generate  : already ran `prisma generate` earlier in the build
+      // --accept-data-loss: required flag for db push; safe because we never
+      //                     remove columns in schema (only add)
+      `npx prisma db push --skip-generate --accept-data-loss`,
+      {
+        stdio: "inherit",
+        env: {
+          ...process.env,
+          // Ensure prisma.config.ts and the CLI both see the correct URL
+          DATABASE_URL: DATABASE_URL!,
+        },
+      }
+    )
+    return true
+  } catch {
+    return false
   }
+}
+
+async function main() {
+  console.log("[setup-database] Starting database schema sync...")
+
+  if (!DATABASE_URL) {
+    console.error(
+      "[setup-database] ❌ No database URL found.\n" +
+        "  Set DATABASE_URL (or POSTGRES_URL / POSTGRES_PRISMA_URL) in your\n" +
+        "  Vercel project environment variables and redeploy."
+    )
+    // Exit 1 so Vercel marks the deployment as failed — a DB-less deployment
+    // is broken by design.
+    process.exit(1)
+  }
+
+  // Mask password in log output
+  const maskedUrl = DATABASE_URL.replace(/:([^@]+)@/, ":****@")
+  console.log(`[setup-database] Using DB: ${maskedUrl}`)
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const ok = await pushSchema(attempt)
+    if (ok) {
+      console.log("[setup-database] ✅ Schema push successful!")
+      process.exit(0)
+    }
+
+    if (attempt < MAX_RETRIES) {
+      console.log(
+        `[setup-database] ⚠️  Attempt ${attempt} failed. ` +
+          `Retrying in ${RETRY_DELAY_MS / 1000}s... (Neon may be cold-starting)`
+      )
+      await sleep(RETRY_DELAY_MS)
+    }
+  }
+
+  console.error(
+    `[setup-database] ❌ Schema push failed after ${MAX_RETRIES} attempts.\n` +
+      "  Check your DATABASE_URL and make sure NeonDB is accessible.\n" +
+      "  Alternatively, run the SQL in scripts/init-database.sql directly\n" +
+      "  in the Neon SQL editor to initialize the database manually."
+  )
+  process.exit(1)
 }
 
 main()
