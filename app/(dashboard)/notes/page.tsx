@@ -121,9 +121,9 @@ export default function NotesPage() {
       </div>
 
       {/* Main content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
         {/* Note list */}
-        <div className="space-y-2">
+        <div className="space-y-2 lg:max-h-[calc(100vh-16rem)] lg:overflow-y-auto">
           {sortedNotes.map(note => (
             <div
               key={note.id}

@@ -9,6 +9,34 @@
 
 @layer base {
   :root {
+    /* Light mode (default) */
+    --background: 0 0% 98%;
+    --foreground: 0 0% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+    --primary: 38 92% 50%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 94%;
+    --secondary-foreground: 0 0% 20%;
+    --muted: 0 0% 94%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 0 0% 94%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 88%;
+    --input: 0 0% 94%;
+    --ring: 38 92% 50%;
+    --radius: 0.375rem;
+    
+    /* Font variables */
+    --font-dm-sans: "DM Sans", system-ui, sans-serif;
+    --font-space-mono: "Space Mono", "Fira Code", monospace;
+  }
+
+  .dark {
     --background: 0 0% 4%;
     --foreground: 0 0% 93%;
     --card: 0 0% 6%;
@@ -28,11 +56,6 @@
     --border: 0 0% 12%;
     --input: 0 0% 10%;
     --ring: 38 92% 50%;
-    --radius: 0.375rem;
-    
-    /* Font variables */
-    --font-dm-sans: "DM Sans", system-ui, sans-serif;
-    --font-space-mono: "Space Mono", "Fira Code", monospace;
   }
 }
 
@@ -72,11 +95,11 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: hsl(0 0% 18%);
+    background: hsl(var(--muted-foreground) / 0.3);
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(0 0% 28%);
+    background: hsl(var(--muted-foreground) / 0.5);
   }
 
   /* Screen reader only utility */
@@ -94,12 +117,18 @@
 }
 
 @layer components {
-  /* Grid background */
+  /* Grid background - theme aware */
   .bg-grid {
+    background-image: 
+      linear-gradient(hsl(0 0% 0% / 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(0 0% 0% / 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .dark .bg-grid {
     background-image: 
       linear-gradient(hsl(0 0% 100% / 0.02) 1px, transparent 1px),
       linear-gradient(90deg, hsl(0 0% 100% / 0.02) 1px, transparent 1px);
-    background-size: 40px 40px;
   }
 
   /* Amber glow effect */
@@ -113,7 +142,7 @@
   }
   .card-hover:hover {
     border-color: hsl(38 92% 50% / 0.3);
-    background-color: hsl(0 0% 7%);
+    background-color: hsl(var(--accent));
     box-shadow: 0 0 0 1px hsl(38 92% 50% / 0.1);
   }
 
@@ -142,9 +171,9 @@
   /* Shimmer loading */
   .shimmer {
     background: linear-gradient(90deg, 
-      hsl(0 0% 8%) 0%, 
-      hsl(0 0% 12%) 50%, 
-      hsl(0 0% 8%) 100%
+      hsl(var(--muted)) 0%, 
+      hsl(var(--accent)) 50%, 
+      hsl(var(--muted)) 100%
     );
     background-size: 200% 100%;
     animation: shimmer 1.5s linear infinite;
@@ -156,31 +185,31 @@
   }
 }
 
-/* Markdown prose styles */
+/* Markdown prose styles - theme aware */
 .prose-dark {
-  color: hsl(0 0% 82%);
+  color: hsl(var(--foreground) / 0.85);
 }
 .prose-dark h1, .prose-dark h2, .prose-dark h3 {
-  color: hsl(0 0% 95%);
+  color: hsl(var(--foreground));
   font-family: var(--font-dm-sans);
   font-weight: 600;
 }
-.prose-dark h1 { font-size: 1.75rem; margin: 1.5rem 0 0.75rem; border-bottom: 1px solid hsl(0 0% 12%); padding-bottom: 0.5rem; }
+.prose-dark h1 { font-size: 1.75rem; margin: 1.5rem 0 0.75rem; border-bottom: 1px solid hsl(var(--border)); padding-bottom: 0.5rem; }
 .prose-dark h2 { font-size: 1.35rem; margin: 1.5rem 0 0.5rem; }
 .prose-dark h3 { font-size: 1.1rem; margin: 1.25rem 0 0.4rem; }
 .prose-dark p { line-height: 1.75; margin: 0.75rem 0; }
 .prose-dark code {
   font-family: var(--font-space-mono);
-  background: hsl(0 0% 10%);
-  border: 1px solid hsl(0 0% 15%);
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
   border-radius: 3px;
   padding: 0.1em 0.35em;
   font-size: 0.85em;
-  color: hsl(38 92% 65%);
+  color: hsl(38 92% 50%);
 }
 .prose-dark pre {
-  background: hsl(0 0% 6%);
-  border: 1px solid hsl(0 0% 13%);
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
   border-radius: 6px;
   padding: 1rem;
   overflow-x: auto;
@@ -190,7 +219,7 @@
   background: none;
   border: none;
   padding: 0;
-  color: hsl(0 0% 85%);
+  color: hsl(var(--foreground) / 0.9);
   font-size: 0.875rem;
 }
 .prose-dark table {
@@ -200,24 +229,24 @@
   font-size: 0.9rem;
 }
 .prose-dark th {
-  background: hsl(0 0% 8%);
+  background: hsl(var(--muted));
   padding: 0.5rem 1rem;
   text-align: left;
   font-weight: 600;
-  color: hsl(0 0% 90%);
-  border: 1px solid hsl(0 0% 14%);
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
 }
 .prose-dark td {
   padding: 0.5rem 1rem;
-  border: 1px solid hsl(0 0% 12%);
-  color: hsl(0 0% 75%);
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
 }
-.prose-dark tr:nth-child(even) td { background: hsl(0 0% 5%); }
+.prose-dark tr:nth-child(even) td { background: hsl(var(--muted) / 0.5); }
 .prose-dark blockquote {
   border-left: 3px solid hsl(38 92% 50% / 0.5);
   padding-left: 1rem;
   margin: 1rem 0;
-  color: hsl(0 0% 60%);
+  color: hsl(var(--muted-foreground));
   font-style: italic;
 }
 .prose-dark ul, .prose-dark ol {
@@ -226,10 +255,10 @@
   line-height: 1.75;
 }
 .prose-dark li { margin: 0.2rem 0; }
-.prose-dark a { color: hsl(38 92% 60%); text-decoration: none; }
+.prose-dark a { color: hsl(38 92% 50%); text-decoration: none; }
 .prose-dark a:hover { text-decoration: underline; }
-.prose-dark strong { color: hsl(0 0% 95%); font-weight: 600; }
-.prose-dark hr { border-color: hsl(0 0% 12%); margin: 1.5rem 0; }
+.prose-dark strong { color: hsl(var(--foreground)); font-weight: 600; }
+.prose-dark hr { border-color: hsl(var(--border)); margin: 1.5rem 0; }
 
 /* Tiptap Editor Styles */
 .ProseMirror {
@@ -278,21 +307,29 @@
 }
 
 .ProseMirror code {
-  background: hsl(0 0% 12%);
-  color: hsl(142 70% 60%);
+  background: hsl(var(--muted));
+  color: hsl(142 70% 45%);
   padding: 0.15em 0.4em;
   border-radius: 4px;
   font-size: 0.875em;
   font-family: monospace;
 }
 
+.dark .ProseMirror code {
+  color: hsl(142 70% 60%);
+}
+
 .ProseMirror pre {
-  background: hsl(0 0% 8%);
-  color: hsl(142 70% 65%);
+  background: hsl(var(--card));
+  color: hsl(142 70% 45%);
   padding: 1rem;
   border-radius: 8px;
   margin: 0.75rem 0;
   overflow-x: auto;
+}
+
+.dark .ProseMirror pre {
+  color: hsl(142 70% 65%);
 }
 
 .ProseMirror pre code {
@@ -362,4 +399,136 @@
 
 .animate-slide-in-right {
   animation: slide-in-right 0.2s ease-out;
+}
+
+/* ─── Clerk Component Overrides ─────────────────────────────────────────────── */
+/* Ensure Clerk dialogs/popovers work in both light and dark modes */
+
+/* User button popover */
+.cl-userButtonPopoverCard {
+  background-color: hsl(var(--card)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.3) !important;
+}
+
+.cl-userButtonPopoverMain {
+  background-color: transparent !important;
+}
+
+.cl-userButtonPopoverActions {
+  border-top: 1px solid hsl(var(--border)) !important;
+}
+
+.cl-userButtonPopoverActionButton {
+  color: hsl(var(--foreground)) !important;
+}
+
+.cl-userButtonPopoverActionButton:hover {
+  background-color: hsl(var(--accent)) !important;
+}
+
+.cl-userButtonPopoverActionButtonIcon {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.cl-userPreviewMainIdentifier {
+  color: hsl(var(--foreground)) !important;
+}
+
+.cl-userPreviewSecondaryIdentifier {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+/* User profile modal */
+.cl-modalContent {
+  background-color: hsl(var(--card)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+}
+
+.cl-profilePage {
+  background-color: transparent !important;
+}
+
+.cl-navbar {
+  background-color: hsl(var(--muted)) !important;
+  border-right: 1px solid hsl(var(--border)) !important;
+}
+
+.cl-navbarButton {
+  color: hsl(var(--foreground)) !important;
+}
+
+.cl-navbarButton:hover {
+  background-color: hsl(var(--accent)) !important;
+}
+
+.cl-navbarButton[data-active="true"] {
+  background-color: hsl(38 92% 50% / 0.1) !important;
+  color: hsl(38 92% 50%) !important;
+}
+
+.cl-pageScrollBox {
+  background-color: transparent !important;
+}
+
+.cl-formFieldLabel {
+  color: hsl(var(--foreground)) !important;
+}
+
+.cl-formFieldInput {
+  background-color: hsl(var(--input)) !important;
+  border-color: hsl(var(--border)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.cl-headerTitle {
+  color: hsl(var(--foreground)) !important;
+}
+
+.cl-headerSubtitle {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.cl-internal-b3fm6y {
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Card backgrounds */
+.cl-card {
+  background-color: hsl(var(--card)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+}
+
+/* All text elements in Clerk */
+.cl-internal-1dauvpw,
+.cl-internal-1hp5nqm,
+.cl-internal-1u1vm0s,
+.cl-formFieldLabelRow,
+.cl-formFieldHintText,
+.cl-footerActionText {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+/* Primary buttons */
+.cl-formButtonPrimary {
+  background-color: hsl(38 92% 50%) !important;
+  color: hsl(0 0% 0%) !important;
+}
+
+.cl-formButtonPrimary:hover {
+  background-color: hsl(38 92% 45%) !important;
+}
+
+/* Links */
+.cl-footerActionLink {
+  color: hsl(38 92% 50%) !important;
+}
+
+.cl-footerActionLink:hover {
+  color: hsl(38 92% 60%) !important;
+}
+
+/* Avatar */
+.cl-avatarBox {
+  border: 2px solid hsl(var(--border)) !important;
 }

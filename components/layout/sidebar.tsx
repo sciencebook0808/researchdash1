@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState, useId } from "react"
+import { useState, useId, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { UserButton } from "@clerk/nextjs"
 import { useCurrentUser } from "@/components/auth/auth-guard"
@@ -176,11 +176,35 @@ function NavContent({ onLinkClick }: { onLinkClick?: () => void }) {
 export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  // Close sidebar on escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && mobileOpen) {
+        setMobileOpen(false)
+      }
+    }
+    document.addEventListener("keydown", handleEscape)
+    return () => document.removeEventListener("keydown", handleEscape)
+  }, [mobileOpen])
+
+  // Prevent body scroll when mobile sidebar is open
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = "hidden"
+    } else {
+      document.body.style.overflow = ""
+    }
+    return () => {
+      document.body.style.overflow = ""
+    }
+  }, [mobileOpen])
+
   return (
     <>
+      {/* Mobile hamburger button */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-3.5 left-4 z-30 w-8 h-8 flex items-center justify-center rounded-md border border-border bg-card hover:bg-accent transition-colors"
+        className="md:hidden fixed top-3 left-3 z-30 w-9 h-9 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors shadow-sm active:scale-95"
         aria-label="Open navigation menu"
         aria-expanded={mobileOpen}
         aria-controls="mobile-sidebar"
@@ -188,25 +212,27 @@ export function Sidebar() {
         <Menu className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
       </button>
 
+      {/* Mobile overlay */}
       {mobileOpen && (
         <div 
-          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" 
+          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm animate-fade-in" 
           onClick={() => setMobileOpen(false)}
           aria-hidden="true"
         />
       )}
 
+      {/* Mobile sidebar */}
       <aside 
         id="mobile-sidebar"
         className={cn(
-          "md:hidden fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border transform transition-transform duration-200 ease-in-out",
+          "md:hidden fixed inset-y-0 left-0 z-50 w-[280px] max-w-[85vw] bg-card border-r border-border transform transition-transform duration-300 ease-out shadow-2xl",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
         aria-label="Mobile navigation"
       >
         <button
           onClick={() => setMobileOpen(false)}
-          className="absolute top-3.5 right-3 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          className="absolute top-3 right-3 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           aria-label="Close navigation menu"
         >
           <X className="w-4 h-4" aria-hidden="true" />
@@ -214,6 +240,7 @@ export function Sidebar() {
         <NavContent onLinkClick={() => setMobileOpen(false)} />
       </aside>
 
+      {/* Desktop sidebar */}
       <aside 
         className="hidden md:flex w-60 flex-shrink-0 border-r border-border flex-col bg-card/50 backdrop-blur-sm"
         aria-label="Desktop navigation"

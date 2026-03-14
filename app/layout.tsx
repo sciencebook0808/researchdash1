@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next"
 import { DM_Sans, Space_Mono } from "next/font/google"
 import { ClerkProvider } from "@clerk/nextjs"
 import { dark } from "@clerk/themes"
+import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 
 const dmSans = DM_Sans({
@@ -70,28 +71,39 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         baseTheme: dark,
         variables: {
           colorPrimary: "#f59e0b",
-          colorBackground: "#0a0a0a",
-          colorInputBackground: "#171717",
-          colorInputText: "#ededed",
           borderRadius: "0.375rem",
         },
         elements: {
           formButtonPrimary: "bg-amber-500 hover:bg-amber-400 text-black",
-          card: "bg-card border border-border",
+          card: "bg-card border border-border shadow-lg",
           headerTitle: "text-foreground",
           headerSubtitle: "text-muted-foreground",
           socialButtonsBlockButton: "border-border bg-muted hover:bg-accent",
           formFieldInput: "bg-input border-border text-foreground",
           footerActionLink: "text-amber-400 hover:text-amber-300",
+          userButtonPopoverCard: "bg-card border border-border",
+          userButtonPopoverActionButton: "text-foreground hover:bg-accent",
+          userButtonPopoverActionButtonText: "text-foreground",
+          userButtonPopoverActionButtonIcon: "text-muted-foreground",
+          userButtonPopoverFooter: "hidden",
+          userPreviewMainIdentifier: "text-foreground",
+          userPreviewSecondaryIdentifier: "text-muted-foreground",
         },
       }}
     >
-      <html lang="en" className={`dark ${dmSans.variable} ${spaceMono.variable}`} suppressHydrationWarning>
+      <html lang="en" className={`${dmSans.variable} ${spaceMono.variable}`} suppressHydrationWarning>
         <body className="bg-background text-foreground antialiased font-sans min-h-screen">
-          <a href="#main-content" className="skip-link">
-            Skip to main content
-          </a>
-          {children}
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <a href="#main-content" className="skip-link">
+              Skip to main content
+            </a>
+            {children}
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>

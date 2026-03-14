@@ -111,16 +111,16 @@ export default function DatasetsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
         {Object.entries(
           datasets.reduce((acc, d) => {
             acc[d.preprocessStatus] = (acc[d.preprocessStatus] || 0) + 1
             return acc
           }, {} as Record<string, number>)
         ).map(([status, count]) => (
-          <div key={status} className="rounded-xl border border-border bg-card p-3">
-            <p className="text-xl font-bold font-mono text-foreground">{count}</p>
-            <span className={cn("text-[11px] font-mono mt-1 inline-block px-1.5 py-0.5 rounded border", getStatusColor(status))}>
+          <div key={status} className="rounded-xl border border-border bg-card p-2.5 sm:p-3">
+            <p className="text-lg sm:text-xl font-bold font-mono text-foreground">{count}</p>
+            <span className={cn("text-[10px] sm:text-[11px] font-mono mt-1 inline-block px-1.5 py-0.5 rounded border", getStatusColor(status))}>
               {status}
             </span>
           </div>

@@ -136,11 +136,11 @@ export default async function DashboardPage() {
       </div>
 
       {/* Protroit Agent spec banner */}
-      <div className="relative overflow-hidden rounded-xl border border-amber-500/20 bg-amber-500/5 p-5">
+      <div className="relative overflow-hidden rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 sm:p-5">
         <div className="absolute inset-0 bg-grid opacity-30" />
-        <div className="relative flex flex-wrap items-center gap-6">
+        <div className="relative flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center gap-4 sm:gap-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
               <FlaskConical className="w-5 h-5 text-amber-400" />
             </div>
             <div>
@@ -148,39 +148,41 @@ export default async function DashboardPage() {
               <p className="text-[15px] font-semibold text-foreground">Protroit Agent v1.0</p>
             </div>
           </div>
-          <div className="h-8 w-px bg-amber-500/20 hidden sm:block" />
-          {[
-            { icon: Target, label: "Target Platform", value: "Mobile / Edge" },
-            { icon: HardDrive, label: "RAM Budget", value: "2–6 GB" },
-            { icon: Zap, label: "Architecture", value: "SLM Orchestrator" },
-            { icon: GitBranch, label: "Mode", value: "Offline-First" },
-          ].map(({ icon: Icon, label, value }) => (
-            <div key={label} className="flex items-center gap-2">
-              <Icon className="w-4 h-4 text-amber-500/70" />
-              <div>
-                <p className="text-[11px] text-muted-foreground">{label}</p>
-                <p className="text-[13px] font-semibold text-amber-300 font-mono">{value}</p>
+          <div className="h-px w-full sm:h-8 sm:w-px bg-amber-500/20" />
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3 sm:gap-6 w-full sm:w-auto">
+            {[
+              { icon: Target, label: "Target Platform", value: "Mobile / Edge" },
+              { icon: HardDrive, label: "RAM Budget", value: "2–6 GB" },
+              { icon: Zap, label: "Architecture", value: "SLM Orchestrator" },
+              { icon: GitBranch, label: "Mode", value: "Offline-First" },
+            ].map(({ icon: Icon, label, value }) => (
+              <div key={label} className="flex items-center gap-2">
+                <Icon className="w-4 h-4 text-amber-500/70 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">{label}</p>
+                  <p className="text-[12px] sm:text-[13px] font-semibold text-amber-300 font-mono truncate">{value}</p>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {statCards.map((card) => {
           const Icon = card.icon
           return (
             <Link key={card.label} href={card.href}>
-              <div className="rounded-xl border border-border bg-card p-4 card-hover cursor-pointer">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[12px] text-muted-foreground">{card.label}</span>
-                  <div className={cn("w-7 h-7 rounded-md border flex items-center justify-center", colorMap[card.color])}>
-                    <Icon className="w-3.5 h-3.5" />
+              <div className="rounded-xl border border-border bg-card p-3 sm:p-4 card-hover cursor-pointer h-full">
+                <div className="flex items-center justify-between mb-2 sm:mb-3">
+                  <span className="text-[11px] sm:text-[12px] text-muted-foreground">{card.label}</span>
+                  <div className={cn("w-6 h-6 sm:w-7 sm:h-7 rounded-md border flex items-center justify-center flex-shrink-0", colorMap[card.color])}>
+                    <Icon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-foreground font-mono">{card.value}</p>
-                <p className="text-[12px] text-muted-foreground mt-1">{card.sub}</p>
+                <p className="text-xl sm:text-2xl font-bold text-foreground font-mono">{card.value}</p>
+                <p className="text-[11px] sm:text-[12px] text-muted-foreground mt-1 truncate">{card.sub}</p>
               </div>
             </Link>
           )
@@ -188,10 +190,10 @@ export default async function DashboardPage() {
       </div>
 
       {/* Overall progress bar */}
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[14px] font-semibold text-foreground">Overall Project Progress</h3>
-          <span className="text-[13px] font-mono text-amber-400">{data.progressPct}%</span>
+          <h3 className="text-[13px] sm:text-[14px] font-semibold text-foreground">Overall Project Progress</h3>
+          <span className="text-[12px] sm:text-[13px] font-mono text-amber-400">{data.progressPct}%</span>
         </div>
         <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
           <div
@@ -199,45 +201,45 @@ export default async function DashboardPage() {
             style={{ width: `${data.progressPct}%` }}
           />
         </div>
-        <div className="flex items-center gap-4 mt-3 text-[12px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4 mt-3 text-[11px] sm:text-[12px] text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            {data.completedSteps} phases complete
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+            <span>{data.completedSteps} complete</span>
           </span>
           <span className="flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-amber-400" />
-            {data.inProgressSteps} in progress
+            <Clock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+            <span>{data.inProgressSteps} in progress</span>
           </span>
           <span className="flex items-center gap-1.5">
-            <Circle className="w-3.5 h-3.5 text-zinc-500" />
-            {12 - data.completedSteps - data.inProgressSteps} pending
+            <Circle className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+            <span>{12 - data.completedSteps - data.inProgressSteps} pending</span>
           </span>
         </div>
       </div>
 
       {/* Bottom grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         {/* Recent experiments */}
-        <div className="rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[14px] font-semibold text-foreground">Recent Experiments</h3>
-            <Link href="/experiments" className="text-[12px] text-amber-400 hover:text-amber-300 flex items-center gap-1">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <h3 className="text-[13px] sm:text-[14px] font-semibold text-foreground">Recent Experiments</h3>
+            <Link href="/experiments" className="text-[11px] sm:text-[12px] text-amber-400 hover:text-amber-300 flex items-center gap-1">
               View all <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
           <div className="space-y-2">
             {data.experiments.map((exp) => (
-              <div key={exp.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-                <div>
-                  <p className="text-[13px] font-medium text-foreground">{exp.name}</p>
-                  <p className="text-[11px] text-muted-foreground">{exp.baseModel}</p>
+              <div key={exp.id} className="flex items-start sm:items-center gap-2 sm:gap-3 py-2 border-b border-border last:border-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] sm:text-[13px] font-medium text-foreground truncate">{exp.name}</p>
+                  <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">{exp.baseModel}</p>
                 </div>
-                <div className="ml-auto text-right">
-                  <span className={cn("text-[11px] px-2 py-0.5 rounded-full border font-mono", getStatusColor(exp.status))}>
+                <div className="text-right flex-shrink-0">
+                  <span className={cn("text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full border font-mono", getStatusColor(exp.status))}>
                     {exp.status}
                   </span>
                   {exp.pass1Score && (
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                    <p className="text-[10px] sm:text-[11px] text-muted-foreground mt-0.5">
                       pass@1: {(exp.pass1Score * 100).toFixed(1)}%
                     </p>
                   )}
@@ -248,28 +250,28 @@ export default async function DashboardPage() {
         </div>
 
         {/* Model versions */}
-        <div className="rounded-xl border border-border bg-card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[14px] font-semibold text-foreground">Model Versions</h3>
-            <Link href="/models" className="text-[12px] text-amber-400 hover:text-amber-300 flex items-center gap-1">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <h3 className="text-[13px] sm:text-[14px] font-semibold text-foreground">Model Versions</h3>
+            <Link href="/models" className="text-[11px] sm:text-[12px] text-amber-400 hover:text-amber-300 flex items-center gap-1">
               View all <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
           <div className="space-y-2">
             {data.models.map((model) => (
-              <div key={model.id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-                <div className="w-8 h-8 rounded-md bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
-                  <Package className="w-4 h-4 text-violet-400" />
+              <div key={model.id} className="flex items-center gap-2 sm:gap-3 py-2 border-b border-border last:border-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+                  <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-violet-400" />
                 </div>
-                <div>
-                  <p className="text-[13px] font-medium text-foreground">{model.name} <span className="font-mono text-amber-400">{model.version}</span></p>
-                  <p className="text-[11px] text-muted-foreground">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] sm:text-[13px] font-medium text-foreground truncate">{model.name} <span className="font-mono text-amber-400">{model.version}</span></p>
+                  <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
                     {model.quantization ?? "FP16"} · {model.fileSizeBytes ? formatBytes(Number(model.fileSizeBytes)) : "–"}
                   </p>
                 </div>
-                <div className="ml-auto">
+                <div className="flex-shrink-0">
                   {model.isDeployed && (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 font-mono">
+                    <span className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 font-mono">
                       DEPLOYED
                     </span>
                   )}
@@ -281,14 +283,14 @@ export default async function DashboardPage() {
       </div>
 
       {/* Roadmap phases quick view */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[14px] font-semibold text-foreground">Development Phases</h3>
-          <Link href="/roadmap" className="text-[12px] text-amber-400 hover:text-amber-300 flex items-center gap-1">
+      <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <h3 className="text-[13px] sm:text-[14px] font-semibold text-foreground">Development Phases</h3>
+          <Link href="/roadmap" className="text-[11px] sm:text-[12px] text-amber-400 hover:text-amber-300 flex items-center gap-1">
             Full roadmap <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
           {data.roadmapSteps.map((step) => {
             const completedCount = step.tasks.filter(t => t.completed).length
             const pct = step.tasks.length > 0 ? (completedCount / step.tasks.length) * 100 : 0
