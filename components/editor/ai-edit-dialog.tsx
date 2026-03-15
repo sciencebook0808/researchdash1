@@ -18,7 +18,7 @@ interface AIEditDialogProps {
   onOpenChange: (open: boolean) => void
   selectedText: string
   onAccept: (newText: string, modelName: string) => void
-  onCancel: () => void
+  onCancel?: () => void
 }
 
 const AI_MODEL = "Gemini-2.5-Flash"
@@ -70,7 +70,8 @@ export function AIEditDialog({
   }
 
   const handleCancel = () => {
-    onCancel()
+    onCancel?.()
+    onOpenChange(false)
     resetState()
   }
 
