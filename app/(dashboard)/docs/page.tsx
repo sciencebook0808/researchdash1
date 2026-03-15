@@ -13,7 +13,7 @@ type DocPage = {
   tags: string[]
   updatedAt: Date
   progress: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED"
-  authorName: string | null
+  createdByUserName: string | null
 }
 
 export default async function DocsPage() {
@@ -22,7 +22,7 @@ export default async function DocsPage() {
   try {
     pages = await prisma.documentationPage.findMany({
       orderBy: [{ section: "asc" }, { order: "asc" }],
-      select: { id: true, title: true, slug: true, section: true, tags: true, updatedAt: true, progress: true },
+      select: { id: true, title: true, slug: true, section: true, tags: true, updatedAt: true, progress: true, createdByUserName: true },
     })
   } catch (error) {
     console.error("DocsPage DB error:", error)
