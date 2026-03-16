@@ -3,7 +3,7 @@
 // Generator uses "prisma-client" with explicit output path (required in v7)
 generator client {
   provider = "prisma-client"
-  output   = "../node_modules/.prisma/client"
+  output   = "../generated/prisma"
 }
 
 datasource db {
