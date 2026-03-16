@@ -14,7 +14,7 @@
 import { tool } from "ai"
 import { z } from "zod"
 import { prisma } from "./prisma"
-import type { Prisma } from "@/generated/prisma"
+import type { Prisma } from "@prisma/client"
 
 // ─── Helper: strip HTML for web content ─────────────────────────────────────
 

@@ -4,14 +4,14 @@
  * Compatible with ALL standard PostgreSQL providers out of the box.
  *
  * Prisma v7 notes:
- *   - Import path: @/generated/prisma (uses tsconfig path alias)
+ *   - Import path: @prisma/client (standard Prisma v7 import)
  *   - URL / directUrl live in prisma.config.ts, NOT the schema datasource block
  *   - We use @prisma/adapter-pg for the pg driver adapter
  *
  * Connection priority: DATABASE_URL → POSTGRES_URL → POSTGRES_PRISMA_URL
  */
 
-import { PrismaClient } from "@/generated/prisma"
+import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 
 // ─── Exported types ───────────────────────────────────────────────────────────
