@@ -38,12 +38,12 @@ async function getDashboardData() {
       prisma.modelVersion.findMany({ orderBy: { createdAt: "desc" }, take: 3 }),
     ])
 
-    const totalTasks = roadmapSteps.reduce((s, step) => s + step.tasks.length, 0)
-    const completedTasks = roadmapSteps.reduce((s, step) => s + step.tasks.filter(t => t.completed).length, 0)
-    const completedSteps = roadmapSteps.filter(s => s.status === "COMPLETED").length
-    const inProgressSteps = roadmapSteps.filter(s => s.status === "IN_PROGRESS").length
+    const totalTasks = roadmapSteps.reduce((s: number, step) => s + step.tasks.length, 0)
+    const completedTasks = roadmapSteps.reduce((s: number, step) => s + step.tasks.filter((t) => t.completed).length, 0)
+    const completedSteps = roadmapSteps.filter((s) => s.status === "COMPLETED").length
+    const inProgressSteps = roadmapSteps.filter((s) => s.status === "IN_PROGRESS").length
     const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-    const totalSamples = datasets.reduce((s, d) => s + (d.numSamples || 0), 0)
+    const totalSamples = datasets.reduce((s: number, d) => s + (d.numSamples || 0), 0)
     const latestModel = models[0]
 
     return { roadmapSteps, datasets, experiments, models, completedSteps, inProgressSteps, progressPct, totalSamples, latestModel, totalTasks, completedTasks, databaseError: null as string | null }
