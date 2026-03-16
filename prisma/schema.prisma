@@ -1,10 +1,9 @@
 // prisma/schema.prisma
 // Prisma ORM v7 — url/directUrl moved to prisma.config.ts (not allowed in schema)
-// Generator uses "prisma-client" with explicit output path (required in v7)
+// Generator uses "prisma-client-js" which outputs to node_modules/.prisma/client
+// This is required for Turbopack compatibility (imports from @prisma/client)
 generator client {
-  provider            = "prisma-client"
-  output              = "../generated/prisma"
-  importFileExtension = "ts"
+  provider = "prisma-client-js"
 }
 
 datasource db {

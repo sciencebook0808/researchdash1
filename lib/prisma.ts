@@ -2,19 +2,15 @@
  * lib/prisma.ts — Prisma ORM v7 singleton for Vercel + any PostgreSQL provider
  * ─────────────────────────────────────────────────────────────────────────────
  * Prisma v7 notes:
- *   - Generator outputs to ./generated/prisma
- *   - A stub file exists at generated/prisma/index.js for Turbopack resolution
- *   - The stub is overwritten by `prisma generate` during build
+ *   - Generator uses "prisma-client-js" which outputs to node_modules/.prisma/client
+ *   - This enables Turbopack compatibility (imports from @prisma/client work naturally)
  *   - URL / directUrl are configured in prisma.config.ts
  *   - We use @prisma/adapter-pg for the pg driver adapter
  *
  * Connection priority: DATABASE_URL → POSTGRES_URL → POSTGRES_PRISMA_URL
  */
 
-// The generated/prisma directory contains a stub that Turbopack can resolve.
-// At build time, `prisma generate` runs first and overwrites the stub with
-// the real generated client, so this import works correctly at runtime.
-import { PrismaClient } from "../generated/prisma"
+import { PrismaClient } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 
 // ─── Exported types ───────────────────────────────────────────────────────────
