@@ -30,12 +30,12 @@ const FALLBACK_FREE_MODELS: OpenRouterModel[] = [
 ]
 
 const FALLBACK_PRO_MODELS: OpenRouterModel[] = [
-  { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet", provider: "Anthropic", free: false },
-  { id: "anthropic/claude-3-5-haiku", name: "Claude 3.5 Haiku", provider: "Anthropic", free: false },
+  { id: "anthropic/claude-4.6-opus", name: "Claude 4.6 Sonnet", provider: "Anthropic", free: false },
+  { id: "anthropic/claude-4-5-haiku", name: "Claude 3.5 Haiku", provider: "Anthropic", free: false },
   { id: "openai/gpt-4o", name: "GPT-4o", provider: "OpenAI", free: false },
   { id: "openai/gpt-4o-mini", name: "GPT-4o Mini", provider: "OpenAI", free: false },
   { id: "openai/o1-mini", name: "o1 Mini", provider: "OpenAI", free: false },
-  { id: "google/gemini-2.5-pro-preview", name: "Gemini 2.5 Pro Preview", provider: "Google", free: false },
+  { id: "google/gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview", provider: "Google", free: false },
   { id: "meta-llama/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct", provider: "Meta", free: false },
   { id: "mistralai/mistral-large", name: "Mistral Large", provider: "Mistral AI", free: false },
   { id: "deepseek/deepseek-r1", name: "DeepSeek R1 (Pro)", provider: "DeepSeek", free: false },
@@ -48,24 +48,29 @@ const FALLBACK_PRO_MODELS: OpenRouterModel[] = [
 export const AUTO_ROUTING_CONFIG = {
   // Auto: Best overall model regardless of cost
   auto: [
-    "anthropic/claude-3.7-sonnet",
-    "openai/gpt-4o",
-    "google/gemini-2.5-pro-preview",
+    "anthropic/claude-4.6-opus",
+    "openai/gpt-5-mini",
+    "google/gemini-2.5-flash",
     "meta-llama/llama-3.3-70b-instruct",
   ],
   // Auto-Free: Best free models
   autoFree: [
     "deepseek/deepseek-r1:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
     "meta-llama/llama-3.1-8b-instruct:free",
     "qwen/qwen-2.5-7b-instruct:free",
     "mistralai/mistral-7b-instruct:free",
   ],
   // Auto-Paid: Best paid models (premium tier)
   autoPaid: [
-    "anthropic/claude-3.7-sonnet",
-    "openai/gpt-4o",
-    "google/gemini-2.5-pro-preview",
-    "anthropic/claude-3-5-haiku",
+    "anthropic/claude-4.6-sonnet",
+    "anthropic/claude-4.6-opus",
+    "openai/gpt-5.4-mini",
+    "openai/gpt-5.4-nano",
+    "nvidia/nemotron-3-super",
+    "google/gemini-3.1-flash-lite",
+    "google/gemini-3.1-pro-preview",
+    "anthropic/claude-4.5-haiku",
   ],
 }
 
@@ -75,6 +80,7 @@ export const KNOWN_PROVIDERS = [
   "OpenAI",
   "Anthropic",
   "Google",
+  "Nvidia",
   "Meta",
   "Mistral AI",
   "DeepSeek",
@@ -246,6 +252,7 @@ function normalizeProvider(raw: string): string {
     "meta-llama": "Meta",
     "mistralai": "Mistral AI",
     "openai": "OpenAI",
+    "nvidia": "Nvidia",
     "anthropic": "Anthropic",
     "google": "Google",
     "deepseek": "DeepSeek",
@@ -255,6 +262,7 @@ function normalizeProvider(raw: string): string {
     "openchat": "OpenChat",
     "nousresearch": "Nous Research",
     "perplexity": "Perplexity",
+    
   }
   return map[raw.toLowerCase()] || raw.charAt(0).toUpperCase() + raw.slice(1)
 }
