@@ -162,9 +162,22 @@ const SLASH_COMMANDS = [
 ]
 
 const GEMINI_MODELS: ChatModel[] = [
+  // --- Gemini 3.1 Series ---
+  { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro (Preview)", provider: "gemini", shortName: "3.1 Pro" },
+  { id: "gemini-3.1-flash", name: "Gemini 3.1 Flash", provider: "gemini", shortName: "3.1 Flash" },
+  { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash-Lite", provider: "gemini", shortName: "3.1 Lite" },
+
+  // --- Gemini 3 Specialized ---
+  { id: "gemini-3-deep-think", name: "Gemini 3 Deep Think", provider: "gemini", shortName: "3 Thinking" },
+
+  // --- Gemini 2.5 Series ---
+  { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", provider: "gemini", shortName: "2.5 Pro" },
   { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", provider: "gemini", shortName: "2.5 Flash" },
-  { id: "gemini-2.5-pro",   name: "Gemini 2.5 Pro",   provider: "gemini", shortName: "2.5 Pro"   },
-  { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", provider: "gemini", shortName: "1.5 Flash" },
+  { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash-Lite", provider: "gemini", shortName: "2.5 Lite" },
+
+  // --- Legacy / Context Specialized ---
+  { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro (2M Context)", provider: "gemini", shortName: "1.5 Pro" },
+  { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", provider: "gemini", shortName: "1.5 Flash" }
 ]
 
 const TOOL_ICONS: Record<string, React.ElementType> = {
