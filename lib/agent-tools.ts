@@ -618,48 +618,68 @@ type ImageGenResult = {
 
 // ── Path A: Gemini Direct ─────────────────────────────────────────────────────
 
+// Explicit model ID map — avoids TypeScript union type issues when accessing .model on catalog
+const GEMINI_DIRECT_MODEL_IDS: Record<"gemini-2.0-flash-image" | "gemini-2.5-flash-image" | "imagen-4", string> = {
+  "gemini-2.0-flash-image":  "gemini-2.0-flash-preview-image-generation",
+  "gemini-2.5-flash-image":  "gemini-2.5-flash-preview-image-generation",
+  "imagen-4":                "imagen-4-generate-002",
+}
+
+const GEMINI_DIRECT_LABELS: Record<"gemini-2.0-flash-image" | "gemini-2.5-flash-image" | "imagen-4", string> = {
+  "gemini-2.0-flash-image":  "Gemini 2.0 Flash Image",
+  "gemini-2.5-flash-image":  "Gemini 2.5 Flash Image",
+  "imagen-4":                "Imagen 4",
+}
+
 async function generateWithGeminiDirect(
   prompt: string,
   modelKey: "gemini-2.0-flash-image" | "gemini-2.5-flash-image" | "imagen-4",
   apiKey: string,
   options: { filename?: string; folder?: string; tags?: string[] }
 ): Promise<ImageGenResult> {
-  const cfg = IMAGE_MODEL_CATALOG[modelKey]
+  const modelId = GEMINI_DIRECT_MODEL_IDS[modelKey]
+  const modelLabel = GEMINI_DIRECT_LABELS[modelKey]
   try {
     const { GoogleGenAI } = await import("@google/genai")
     const ai = new GoogleGenAI({ apiKey })
 
     if (modelKey === "imagen-4") {
-      // Imagen 4: uses generateImages API
-      const result = await (ai.models as unknown as Record<string, (opts: Record<string, unknown>) => Promise<Record<string, unknown>>>).generateImages({
-        model: cfg.model,
-        prompt,
-        config: { numberOfImages: 1, outputMimeType: "image/png" },
-      })
-      const images = (result as Record<string, unknown[]>).generatedImages
+      // Imagen 4: uses generateImages API — cast through unknown to bypass Models index signature
+      const modelsAny = ai.models as unknown as Record<string, (opts: Record<string, unknown>) => Promise<unknown>>
+      const result = await modelsAny["generateImages"]({ model: modelId, prompt, config: { numberOfImages: 1, outputMimeType: "image/png" } })
+      const resultObj = result as Record<string, unknown>
+      const images = resultObj["generatedImages"] as unknown[] | undefined
       if (!images?.length) return { success: false, error: "Imagen 4 returned no images" }
-      const imgData = (images[0] as Record<string, Record<string, string>>).image
+      const imgObj = images[0] as Record<string, unknown>
+      const imgData = imgObj["image"] as Record<string, string> | undefined
       if (!imgData?.imageBytes) return { success: false, error: "Imagen 4 returned empty image bytes" }
       const buffer = Buffer.from(imgData.imageBytes, "base64")
       const upload = await uploadToCloudinary(buffer, { filename: options.filename || `imagen4-${Date.now()}`, folder: options.folder || "prausdit-lab/agent-generated", tags: options.tags || ["agent-generated", "imagen-4"] })
       if ("error" in upload) return { success: false, error: `Generated OK but upload failed: ${upload.error}` }
-      return { success: true, cloudinaryUrl: upload.url, publicId: upload.publicId, model: cfg.model, bytes: upload.bytes }
+      return { success: true, cloudinaryUrl: upload.url, publicId: upload.publicId, model: modelId, bytes: upload.bytes }
     }
 
-    // Gemini image models: uses generateContent with responseModalities
+    // Gemini image models: generateContent with responseModalities IMAGE
     const result = await ai.models.generateContent({
-      model: cfg.model,
+      model: modelId,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: { responseModalities: ["IMAGE"], temperature: 0.9 } as Record<string, unknown>,
+      // Cast config to unknown — responseModalities is not in the base type definitions yet
+      config: { responseModalities: ["IMAGE"], temperature: 0.9 } as unknown as Record<string, unknown>,
     })
-    const parts = result.candidates?.[0]?.content?.parts
-    if (!parts) return { success: false, error: `${cfg.label} returned no content` }
-    const imagePart = parts.find((p: Record<string, unknown>) => p.inlineData) as Record<string, Record<string, string>> | undefined
-    if (!imagePart?.inlineData?.data) return { success: false, error: `${cfg.label} returned no image data` }
-    const buffer = Buffer.from(imagePart.inlineData.data, "base64")
+    // Cast parts array through unknown[] to avoid Part index signature constraint
+    const rawParts = result.candidates?.[0]?.content?.parts as unknown[] | undefined
+    if (!rawParts?.length) return { success: false, error: `${modelLabel} returned no content` }
+    const imagePartRaw = rawParts.find((p) => {
+      const part = p as Record<string, unknown>
+      return !!part["inlineData"]
+    }) as Record<string, unknown> | undefined
+    if (!imagePartRaw) return { success: false, error: `${modelLabel} returned no image data` }
+    const inlineData = imagePartRaw["inlineData"] as Record<string, string> | undefined
+    if (!inlineData?.data) return { success: false, error: `${modelLabel} inlineData.data missing` }
+    const buffer = Buffer.from(inlineData.data, "base64")
     const upload = await uploadToCloudinary(buffer, { filename: options.filename || `gemini-img-${Date.now()}`, folder: options.folder || "prausdit-lab/agent-generated", tags: options.tags || ["agent-generated", "gemini-image"] })
     if ("error" in upload) return { success: false, error: `Generated OK but upload failed: ${upload.error}` }
-    return { success: true, cloudinaryUrl: upload.url, publicId: upload.publicId, model: cfg.model, bytes: upload.bytes }
+    return { success: true, cloudinaryUrl: upload.url, publicId: upload.publicId, model: modelId, bytes: upload.bytes }
   } catch (e) {
     return { success: false, error: `${modelKey} generation failed: ${String(e)}` }
   }
