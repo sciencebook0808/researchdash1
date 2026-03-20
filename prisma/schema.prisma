@@ -11,7 +11,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "cockroachdb"
 }
 
 // ---------------------------------------------
@@ -364,7 +364,7 @@ model AISettings {
   updatedAt                DateTime @updatedAt
   
   tavilyApiKey           String?
-  braveApiKey            String?
+  exaApiKey              String?
   serpApiKey             String?
   firecrawlApiKey        String?
   crawl4aiUrl            String?

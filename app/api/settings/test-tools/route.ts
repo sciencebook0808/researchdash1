@@ -8,7 +8,7 @@
  *
  * Providers:
  *   "tavily"    - search
- *   "brave"     - search
+ *   "exa"       - search
  *   "serpapi"   - search
  *   "firecrawl" - crawl
  *   "crawl4ai"  - crawl
@@ -56,17 +56,20 @@ export async function POST(req: Request) {
         }
       }
 
-      // ── BRAVE ────────────────────────────────────────────────────────────────
-      case "brave": {
-        const key = bodyKey || s?.braveApiKey || process.env.BRAVE_API_KEY
-        if (!key) return NextResponse.json({ success: false, error: "No Brave Search API key provided" })
+      // ── EXA ─────────────────────────────────────────────────────────────────
+      case "exa": {
+        const key = bodyKey || s?.exaApiKey || process.env.EXA_API_KEY
+        if (!key) return NextResponse.json({ success: false, error: "No Exa API key provided" })
         try {
-          const res = await fetch("https://api.search.brave.com/res/v1/web/search?q=test&count=1", {
-            headers: { "Accept": "application/json", "X-Subscription-Token": key },
+          const res = await fetch("https://api.exa.ai/search", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json", "x-api-key": key },
+            body:    JSON.stringify({ query: "test", type: "auto", num_results: 1 }),
             signal:  AbortSignal.timeout(8000),
           })
-          if (res.ok) return NextResponse.json({ success: true, message: "Brave Search API key is valid ✓" })
-          return NextResponse.json({ success: false, error: `HTTP ${res.status}: ${res.statusText}` })
+          if (res.ok) return NextResponse.json({ success: true, message: "Exa API key is valid ✓" })
+          const err = await res.json().catch(() => ({}))
+          return NextResponse.json({ success: false, error: (err as { error?: string }).error || `HTTP ${res.status}` })
         } catch (e) {
           return NextResponse.json({ success: false, error: `Connection failed: ${String(e)}` })
         }

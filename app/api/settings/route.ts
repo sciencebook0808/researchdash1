@@ -50,7 +50,7 @@ function buildSettingsResponse(settings: Record<string, unknown> | null) {
       hasOpenRouterKey:         false,
       // Research search provider flags
       hasTavilyKey:             false,
-      hasBraveKey:              false,
+      hasExaKey:                false,
       hasSerpApiKey:            false,
       // Crawl provider flags
       hasFirecrawlKey:          false,
@@ -72,7 +72,7 @@ function buildSettingsResponse(settings: Record<string, unknown> | null) {
     hasOpenRouterKey:          !!settings.openrouterApiKey,
     // Research search provider flags
     hasTavilyKey:              !!settings.tavilyApiKey,
-    hasBraveKey:               !!settings.braveApiKey,
+    hasExaKey:                 !!settings.exaApiKey,
     hasSerpApiKey:             !!settings.serpApiKey,
     // Crawl provider flags
     hasFirecrawlKey:           !!settings.firecrawlApiKey,
@@ -129,7 +129,7 @@ export async function POST(req: Request) {
       selectedOpenRouterModels,
       // Research search provider keys (new)
       tavilyApiKey,
-      braveApiKey,
+      exaApiKey,
       serpApiKey,
       // Crawl provider keys (new)
       firecrawlApiKey,
@@ -149,9 +149,9 @@ export async function POST(req: Request) {
     if (geminiApiKey      && geminiApiKey      !== "") data.geminiApiKey      = geminiApiKey
     if (openrouterApiKey  && openrouterApiKey  !== "") data.openrouterApiKey  = openrouterApiKey
 
-    // ── Research search providers ─────────────────────────────────────────────
+    // ── Research search providers (Tavily primary, Exa secondary, SerpAPI fallback) ──────
     if (tavilyApiKey  !== undefined) data.tavilyApiKey  = tavilyApiKey  === "" ? null : tavilyApiKey
-    if (braveApiKey   !== undefined) data.braveApiKey   = braveApiKey   === "" ? null : braveApiKey
+    if (exaApiKey     !== undefined) data.exaApiKey     = exaApiKey     === "" ? null : exaApiKey
     if (serpApiKey    !== undefined) data.serpApiKey    = serpApiKey    === "" ? null : serpApiKey
 
     // ── Crawl providers ───────────────────────────────────────────────────────

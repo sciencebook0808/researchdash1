@@ -1,5 +1,15 @@
 /**
  * Prausdit Research Lab — Agent Tools (AI SDK v6)
+ *
+ * KEY FIX: All API keys (Tavily, Exa, SerpAPI, Firecrawl, Crawl4AI, Cloudinary)
+ * Brave replaced with Exa: supports auto/deep modes + research paper category detection.
+ * are now read from the database (AISettings) first, falling back to env vars.
+ * This matches the pattern already used for Gemini / OpenRouter keys.
+ *
+ * Tools added:
+ *   - list_projects      → list all projects with counts
+ *   - switch_project     → switch active project by name or ID
+ *   - buildProjectScopedTools() → factory that auto-injects currentProjectId
  */
 
 import { tool } from "ai"
@@ -13,7 +23,7 @@ type InputJsonValue =
   | { [key: string]: InputJsonValue }
   | InputJsonValue[]
 
-// ── Utilities ──────────────────────
+// ── Utilities ─────────────────────────────────────────────────────────────────
 
 function stripHtml(html: string): string {
   return html
@@ -41,10 +51,15 @@ function isSafeUrl(url: string): boolean {
   return !BLOCKED_HOSTS.some((b) => url.includes(b))
 }
 
-// from the Settings UI), then falls back
+// ── Research Config — DB-first, env fallback ──────────────────────────────────
+//
+// This is the core fix. Previously getResearchConfig() only read process.env.
+// Now it reads from AISettings in the database first (where the user saves keys
+// from the Settings UI), then falls back to env vars as a secondary option.
+
 interface ResearchConfig {
   tavily:    string | null
-  brave:     string | null
+  exa:       string | null
   serpapi:   string | null
   firecrawl: string | null
   crawl4ai:  string | null
@@ -61,7 +76,7 @@ async function getResearchConfig(): Promise<ResearchConfig> {
 
   let dbSettings: {
     tavilyApiKey?: string | null
-    braveApiKey?: string | null
+    exaApiKey?: string | null
     serpApiKey?: string | null
     firecrawlApiKey?: string | null
     crawl4aiUrl?: string | null
@@ -71,7 +86,7 @@ async function getResearchConfig(): Promise<ResearchConfig> {
     dbSettings = await prisma.aISettings.findFirst({
       select: {
         tavilyApiKey: true,
-        braveApiKey: true,
+        exaApiKey: true,
         serpApiKey: true,
         firecrawlApiKey: true,
         crawl4aiUrl: true,
@@ -83,7 +98,7 @@ async function getResearchConfig(): Promise<ResearchConfig> {
 
   const cfg: ResearchConfig = {
     tavily:    dbSettings?.tavilyApiKey    || process.env.TAVILY_API_KEY    || null,
-    brave:     dbSettings?.braveApiKey     || process.env.BRAVE_API_KEY     || null,
+    exa:       dbSettings?.exaApiKey       || process.env.EXA_API_KEY       || null,
     serpapi:   dbSettings?.serpApiKey      || process.env.SERPAPI_KEY       || null,
     firecrawl: dbSettings?.firecrawlApiKey || process.env.FIRECRAWL_API_KEY || null,
     crawl4ai:  dbSettings?.crawl4aiUrl     || process.env.CRAWL4AI_API_URL  || null,
@@ -141,17 +156,46 @@ async function searchTavily(query: string, cfg: ResearchConfig): Promise<Researc
   } catch { return null }
 }
 
-async function searchBrave(query: string, cfg: ResearchConfig): Promise<ResearchResult[] | null> {
-  if (!cfg.brave) return null
+// Detect if a query is academic/research-paper oriented
+function isResearchPaperQuery(query: string): boolean {
+  return /arxiv|paper|research|study|survey|dataset|benchmark|model|training|fine.?tun|LoRA|QLoRA|GRPO|transformer|llm|slm|neural|evaluation|experiment/i.test(query)
+}
+
+async function searchExa(query: string, cfg: ResearchConfig, mode: "auto" | "deep" = "auto"): Promise<ResearchResult[] | null> {
+  if (!cfg.exa) return null
   try {
-    const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=6`, {
-      headers: { "Accept": "application/json", "X-Subscription-Token": cfg.brave },
-      signal: AbortSignal.timeout(10000),
+    // Auto-detect research paper queries and add category for better results
+    const isAcademic = isResearchPaperQuery(query)
+    const body: Record<string, unknown> = {
+      query,
+      // Use "deep" type for deep research mode, "auto" for normal queries
+      type: mode === "deep" ? "deep" : "auto",
+      num_results: mode === "deep" ? 8 : 6,
+      contents: mode === "deep"
+        ? { text: { max_characters: 10000 } }      // full text for deep research
+        : { highlights: { num_sentences: 3, highlights_per_url: 2 } }, // highlights for quick
+    }
+    // Add research paper category for academic queries
+    if (isAcademic) body.category = "research paper"
+
+    const res = await fetch("https://api.exa.ai/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": cfg.exa },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(mode === "deep" ? 20000 : 12000),
     })
     if (!res.ok) return null
     const data = await res.json()
-    return (data.web?.results || []).map((r: { title: string; url: string; description?: string }) => ({
-      title: r.title, url: r.url, snippet: r.description || "", source: "brave",
+    return (data.results || []).map((r: {
+      title?: string; url: string; id?: string;
+      highlights?: string[]; text?: string; score?: number
+    }) => ({
+      title: r.title || r.url,
+      url: r.url,
+      snippet: r.highlights?.join(" ") || r.text?.slice(0, 400) || "",
+      content: r.text ? r.text.slice(0, 4000) : undefined,
+      source: "exa",
+      score: r.score,
     }))
   } catch { return null }
 }
@@ -170,12 +214,15 @@ async function searchSerpApi(query: string, cfg: ResearchConfig): Promise<Resear
   } catch { return null }
 }
 
-async function searchWithFallback(query: string): Promise<{ results: ResearchResult[]; provider: string }> {
+async function searchWithFallback(query: string, mode: "auto" | "deep" = "auto"): Promise<{ results: ResearchResult[]; provider: string }> {
   const cfg = await getResearchConfig()
+  // Tavily: primary — AI-optimised search with content extraction
   const tavily = await searchTavily(query, cfg)
   if (tavily && tavily.length > 0) return { results: tavily, provider: "tavily" }
-  const brave = await searchBrave(query, cfg)
-  if (brave && brave.length > 0) return { results: brave, provider: "brave" }
+  // Exa: secondary — neural search, excellent for research papers + deep mode
+  const exa = await searchExa(query, cfg, mode)
+  if (exa && exa.length > 0) return { results: exa, provider: "exa" }
+  // SerpAPI: final fallback — broad Google coverage
   const serp = await searchSerpApi(query, cfg)
   if (serp && serp.length > 0) return { results: serp, provider: "serpapi" }
   return { results: [], provider: "none" }
@@ -239,15 +286,15 @@ async function crawlWithFallback(url: string): Promise<{ content: string | null;
   return { content: null, provider: "none" }
 }
 
-async function deepResearch(query: string, options: { maxCrawl?: number; crawlEnabled?: boolean } = {}): Promise<DeepResearchOutput> {
-  const { maxCrawl = 2, crawlEnabled = true } = options
+async function deepResearch(query: string, options: { maxCrawl?: number; crawlEnabled?: boolean; mode?: "auto" | "deep" } = {}): Promise<DeepResearchOutput> {
+  const { maxCrawl = 2, crawlEnabled = true, mode = "auto" } = options
   try {
-    const { results: searchResults, provider } = await searchWithFallback(query)
+    const { results: searchResults, provider } = await searchWithFallback(query, mode)
     if (searchResults.length === 0) {
       return {
         query, results: [], sources: [], provider, crawledCount: 0,
         summary: provider === "none"
-          ? "No search API keys configured. Add Tavily, Brave, or SerpAPI keys in Settings → Manage API."
+          ? "No search API keys configured. Add Tavily, Exa, or SerpAPI keys in Settings → Manage API."
           : `No results found for "${query}".`,
         error: provider === "none" ? "No search API keys configured." : undefined,
       }
@@ -709,7 +756,7 @@ export const runResearchAutopilot = tool({
 })
 
 export const researchTool = tool({
-  description: "Perform deep web research. Searches Tavily → Brave → SerpAPI (keys from Settings DB), crawls top results via Firecrawl → Crawl4AI → basic fetch. ALWAYS use for external research.",
+  description: "Perform deep web research. Searches Tavily → Exa → SerpAPI (keys from Settings DB). Exa uses deep mode for thorough research and auto-detects research paper queries. Crawls top results via Firecrawl → Crawl4AI → basic fetch. ALWAYS use for external research.",
   inputSchema: z.object({
     query: z.string(),
     mode: z.enum(["deep", "quick"]).optional().default("deep"),
@@ -719,7 +766,7 @@ export const researchTool = tool({
   }),
   execute: async ({ query, mode, maxCrawl, saveAsNote, projectId }) => {
     try {
-      const output = await deepResearch(query, { maxCrawl: maxCrawl ?? 2, crawlEnabled: mode !== "quick" })
+      const output = await deepResearch(query, { maxCrawl: maxCrawl ?? 2, crawlEnabled: mode !== "quick", mode: mode === "deep" ? "deep" : "auto" })
       let noteResult: { id: string; title: string } | null = null
       if (saveAsNote && output.results.length > 0) {
         const noteContent = [`# Research: ${query}`, "", `**Provider:** ${output.provider} | **Crawled:** ${output.crawledCount} pages`, "", "## Summary", output.summary, "", "## Sources", ...output.sources.map((s, i) => `${i + 1}. ${s}`)].join("\n")

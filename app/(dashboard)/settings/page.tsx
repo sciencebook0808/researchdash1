@@ -20,7 +20,7 @@ interface AISettingsData {
   hasGeminiKey: boolean
   hasOpenRouterKey: boolean
   hasTavilyKey: boolean
-  hasBraveKey: boolean
+  hasExaKey: boolean
   hasSerpApiKey: boolean
   hasFirecrawlKey: boolean
   hasCrawl4aiUrl: boolean
@@ -355,7 +355,7 @@ export default function SettingsPage() {
 
   // Research search
   const [tavilyKey, setTavilyKey] = useState(""); const [savingTavily, setSavingTavily] = useState(false); const [testTavily, setTestTavily] = useState<TestStatus>({ type: null, message: "" })
-  const [braveKey, setBraveKey] = useState(""); const [savingBrave, setSavingBrave] = useState(false); const [testBrave, setTestBrave] = useState<TestStatus>({ type: null, message: "" })
+  const [exaKey, setExaKey] = useState(""); const [savingExa, setSavingExa] = useState(false); const [testExa, setTestExa] = useState<TestStatus>({ type: null, message: "" })
   const [serpKey, setSerpKey] = useState(""); const [savingSerp, setSavingSerp] = useState(false); const [testSerp, setTestSerp] = useState<TestStatus>({ type: null, message: "" })
 
   // Crawl
@@ -789,7 +789,7 @@ export default function SettingsPage() {
               <SectionCard title="Search Providers" icon={Search} locked={!canEdit} accent="blue" id="api-search">
                 <p className="text-[12px] text-muted-foreground mb-5">
                   Used by the <code className="text-blue-400 text-[11px]">research</code> agent tool.
-                  Tried in order: <span className="text-blue-400 font-medium">Tavily → Brave → SerpAPI</span>. Add at least one.
+                  Tried in order: <span className="text-blue-400 font-medium">Tavily → Exa → SerpAPI</span>. Add at least one.
                 </p>
                 <div className="space-y-6">
                   <ToolKeyRow label="Tavily API Key" placeholder="tvly-…" hasSaved={!!settings?.hasTavilyKey}
@@ -798,12 +798,12 @@ export default function SettingsPage() {
                     onSave={async () => { setSavingTavily(true); try { await saveKey({ tavilyApiKey: tavilyKey }); setTavilyKey("") } finally { setSavingTavily(false) } }}
                     onTest={async () => testProvider("tavily", setTestTavily, tavilyKey || undefined)}
                     saving={savingTavily} testStatus={testTavily} disabled={!canEdit} docsUrl="https://docs.tavily.com" />
-                  <ToolKeyRow label="Brave Search API Key" placeholder="BSAb…" hasSaved={!!settings?.hasBraveKey}
-                    hint="Fallback. Privacy-first web search."
-                    value={braveKey} onChange={setBraveKey}
-                    onSave={async () => { setSavingBrave(true); try { await saveKey({ braveApiKey: braveKey }); setBraveKey("") } finally { setSavingBrave(false) } }}
-                    onTest={async () => testProvider("brave", setTestBrave, braveKey || undefined)}
-                    saving={savingBrave} testStatus={testBrave} disabled={!canEdit} docsUrl="https://brave.com/search/api" />
+                  <ToolKeyRow label="Exa API Key" placeholder="exa-…" hasSaved={!!settings?.hasExaKey}
+                    hint="Secondary search. Neural AI search — excellent for research papers, deep research mode, and academic queries."
+                    value={exaKey} onChange={setExaKey}
+                    onSave={async () => { setSavingExa(true); try { await saveKey({ exaApiKey: exaKey }); setExaKey("") } finally { setSavingExa(false) } }}
+                    onTest={async () => testProvider("exa", setTestExa, exaKey || undefined)}
+                    saving={savingExa} testStatus={testExa} disabled={!canEdit} docsUrl="https://dashboard.exa.ai/api-keys" />
                   <ToolKeyRow label="SerpAPI Key" placeholder="your-serpapi-key" hasSaved={!!settings?.hasSerpApiKey}
                     hint="Final fallback. Google Search results."
                     value={serpKey} onChange={setSerpKey}
