@@ -1,21 +1,20 @@
 /**
  * Prausdit Research Lab — Agent Engine
- * AI SDK 6.x (March 2026) — npm package "ai" latest: 6.0.116
  *
- * UPGRADED:
- *   - Planning-first system prompt with HITL rules
- *   - Loads active AgentFiles from DB and injects into system prompt
- *   - New TOOL_LABELS for research, planning, image upload
- *   - Updated workflow intent detection
+ * UPGRADED (Project Context Awareness):
+ *   - AgentOptions now accepts currentProjectId
+ *   - System prompt automatically includes current project context
+ *   - Uses buildProjectScopedTools() so all tools auto-inject projectId
+ *   - list_projects / switch_project added to TOOL_LABELS
  */
 
 import { streamText, stepCountIs } from "ai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createOpenAI } from "@ai-sdk/openai"
 import { prisma } from "./prisma"
-import { agentTools } from "./agent-tools"
+import { agentTools, buildProjectScopedTools } from "./agent-tools"
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface AgentMessage {
   role: "user" | "assistant"
@@ -28,14 +27,16 @@ export interface AgentOptions {
   provider: "gemini" | "openrouter"
   model: string
   systemContext?: string
+  /** The currently selected project ID from the user's session */
+  currentProjectId?: string | null
 }
 
 // ─── Active Agent File Loader ─────────────────────────────────────────────────
 
 interface AgentFileSection {
-  system:  string[]  // type === "system"
-  rules:   string[]  // type === "rules"
-  tools:   string[]  // type === "tools"
+  system:  string[]
+  rules:   string[]
+  tools:   string[]
 }
 
 async function loadActiveAgentFiles(): Promise<AgentFileSection> {
@@ -54,7 +55,7 @@ async function loadActiveAgentFiles(): Promise<AgentFileSection> {
       }
     }
   } catch {
-    // AgentFile table may not exist yet — graceful fallback to base prompt
+    // AgentFile table may not exist yet
   }
   return sections
 }
@@ -70,7 +71,7 @@ Power development of **Protroit Agent** (offline-first SLM AI for mobile/edge) a
 
 ---
 
-## 🧠 CORE OPERATING RULES
+## CORE OPERATING RULES
 
 ### Rule 1 — PLAN FIRST, EXECUTE SECOND
 For ANY complex request (multiple creations, research + writing, roadmaps, experiments, etc.):
@@ -83,7 +84,7 @@ For ANY complex request (multiple creations, research + writing, roadmaps, exper
 Simple requests (read doc, search KB, single quick answer) do NOT need a plan.
 
 ### Rule 2 — RESEARCH VIA \`research\` TOOL ONLY
-- Use \`research\` for all external web research (handles Tavily→Brave→SerpAPI + crawling automatically)
+- Use \`research\` for all external web research
 - Use \`crawl_web\` ONLY for fetching a single specific known URL
 - Never call search/crawl APIs manually
 
@@ -98,38 +99,44 @@ Always \`search_internal_docs\` before creating any entity to avoid duplicates.
 
 ### Rule 5 — NEVER SKIP APPROVAL
 If a plan was generated, NEVER execute without seeing explicit approval.
-If user gives feedback → use \`update_plan\` → wait for approval again.
 
-### Rule 6 — ROADMAP PLANNING
-For roadmap creation or large updates:
-1. Generate roadmap plan structure with \`generate_plan\`
-2. Show all phases, tasks, milestones
-3. Wait for approval
-4. Then call \`create_roadmap_step\` for each phase
+### Rule 6 — PROJECT CONTEXT (CRITICAL)
+**ALL create operations automatically use the current project.**
+You NEVER need to specify projectId in your tool calls — it is injected automatically.
+However, you MUST be aware of which project is active and confirm it to the user.
+
+### Rule 7 — PROJECT COMMANDS
+When user says "list projects" → call \`list_projects\`
+When user says "switch to project X" → call \`switch_project\` with the project name/ID
+When user says "select project X" → call \`switch_project\`
 
 ---
 
 ## Tool Capabilities
 
-### 🔬 Research
-- \`research\` — Unified deep research: Tavily/Brave/SerpAPI + Firecrawl/Crawl4AI fallbacks. **Primary research tool.**
+### Project Management (NEW)
+- \`list_projects\`  — List all projects with resource counts
+- \`switch_project\` — Switch to a different project by name or ID
 
-### 📋 Planning (Human-in-the-Loop)
-- \`generate_plan\`     — Create structured plan. Must show to user before executing.
+### Research
+- \`research\` — Unified deep research. Primary research tool.
+
+### Planning
+- \`generate_plan\`     — Create structured plan. Must show before executing.
 - \`update_plan\`       — Refine plan after feedback
 - \`approve_plan\`      — Record user approval
 - \`finalize_execution\` — Record completion + Cloudinary uploads
 
-### 🖼️ Images
+### Images
 - \`upload_image\` — Upload URL → Cloudinary CDN → permanent HTTPS URL
 
 ### Knowledge & RAG
-- \`search_internal_docs\` — Full-text search across all CRM entities
-- \`get_knowledge_graph\`  — Entity relationship graph
+- \`search_internal_docs\` — Full-text search (project-scoped automatically)
+- \`get_knowledge_graph\`  — Entity relationship graph (project-scoped automatically)
 
 ### Documentation
 - \`read_document\`   — Read page by slug
-- \`create_document\` — Write comprehensive documentation (not placeholders)
+- \`create_document\` — Write comprehensive documentation
 - \`update_document\` — Patch existing docs
 
 ### Research Notes
@@ -137,7 +144,7 @@ For roadmap creation or large updates:
 - \`update_note\` — Update note
 
 ### Roadmap
-- \`create_roadmap_step\`   — Add phase with tasks (after plan approval)
+- \`create_roadmap_step\`   — Add phase with tasks
 - \`update_roadmap_step\`   — Update progress
 - \`complete_roadmap_task\` — Complete individual tasks
 
@@ -164,39 +171,81 @@ For roadmap creation or large updates:
 - SLMs: TinyLlama, Phi-3-mini, Gemma-2B, Mistral-7B, Qwen-1.5B
 - Training: LoRA, QLoRA, GRPO, full fine-tune with trl/PEFT/transformers
 - Quantization: GGUF, GPTQ, AWQ, INT4/INT8 for mobile/edge
-- Datasets: JSONL instruction tuning, ShareGPT format, synthetic data
 - Evaluation: BLEU, HumanEval pass@1, MMLU, MT-Bench
-- Deployment: ONNX, Core ML, TFLite, llama.cpp on mobile
 
 ## Response Style
 Rich Markdown with headings, tables, code blocks. Always confirm created entities with IDs.
 When a plan is generated, present it clearly and ask for approval before proceeding.`
 
-// ─── Build Final System Prompt ────────────────────────────────────────────────
+// ─── Build Final System Prompt ─────────────────────────────────────────────────
 
-async function buildSystemPrompt(extraContext?: string): Promise<string> {
+async function buildSystemPrompt(
+  currentProjectId?: string | null,
+  extraContext?: string
+): Promise<string> {
   const files = await loadActiveAgentFiles()
-
   const parts: string[] = []
 
-  // 1. Custom system files override/extend the base (if any)
+  // 1. Base system prompt or custom system files
   if (files.system.length > 0) {
     parts.push(files.system.join("\n\n"))
   } else {
     parts.push(BASE_SYSTEM_PROMPT)
   }
 
-  // 2. Active rules files inject additional constraints
+  // 2. ── PROJECT CONTEXT INJECTION (CRITICAL) ──────────────────────────────
+  // This is the key fix: inject the current project ID prominently in the
+  // system prompt so the agent always knows which project is active.
+  if (currentProjectId) {
+    try {
+      const project = await prisma.project.findUnique({
+        where: { id: currentProjectId },
+        select: { id: true, name: true, type: true, description: true, _count: { select: { datasets: true, experiments: true, documentation: true, roadmapSteps: true, notes: true } } },
+      })
+      if (project) {
+        parts.push(`---\n## CURRENT PROJECT CONTEXT
+
+> **IMPORTANT**: You are currently operating in project **"${project.name}"**.
+> ALL create/search/roadmap/experiment/dataset/note operations are automatically scoped to this project.
+> You do NOT need to specify projectId in tool calls — it is injected automatically.
+
+- **Project Name**: ${project.name}
+- **Project ID**: \`${project.id}\`
+- **Project Type**: ${project.type}
+- **Description**: ${project.description || "No description"}
+- **Resources**:
+  - Datasets: ${project._count.datasets}
+  - Experiments: ${project._count.experiments}
+  - Documents: ${project._count.documentation}
+  - Roadmap Steps: ${project._count.roadmapSteps}
+  - Notes: ${project._count.notes}
+
+When the user creates anything, it will be linked to **${project.name}** automatically.
+When searching, results will be filtered to **${project.name}** first.
+
+If the user wants to switch projects, call the \`switch_project\` tool.`)
+      }
+    } catch {
+      // DB unavailable — include basic context without DB lookup
+      parts.push(`---\n## CURRENT PROJECT CONTEXT\n\n> **Active Project ID**: \`${currentProjectId}\`\n> All operations are scoped to this project automatically.`)
+    }
+  } else {
+    parts.push(`---\n## PROJECT CONTEXT\n\n> **No project selected.** Operations will NOT be scoped to any project (global scope).
+> To select a project, call \`list_projects\` to see available projects, then \`switch_project\`.
+> Or the user can type # in the chat to select a project from the dropdown.`)
+  }
+
+  // 3. Active rules files
   if (files.rules.length > 0) {
     parts.push("---\n## Active Rules\n\n" + files.rules.join("\n\n---\n\n"))
   }
 
-  // 3. Active tools files inject tool definitions/overrides
+  // 4. Active tools files
   if (files.tools.length > 0) {
     parts.push("---\n## Tool Configurations\n\n" + files.tools.join("\n\n---\n\n"))
   }
 
-  // 4. Workflow-specific context
+  // 5. Workflow-specific context
   if (extraContext) {
     parts.push("---\n## Active Workflow Context\n\n" + extraContext)
   }
@@ -216,13 +265,13 @@ async function getModel(provider: "gemini" | "openrouter", modelId: string) {
 
   if (provider === "openrouter") {
     const apiKey = settings?.openrouterApiKey || process.env.OPENROUTER_API_KEY
-    if (!apiKey) throw new Error("OpenRouter API key not configured.\n\nAdd OPENROUTER_API_KEY to environment variables or configure in Settings → Manage API.")
+    if (!apiKey) throw new Error("OpenRouter API key not configured.\n\nAdd OPENROUTER_API_KEY to environment variables or configure in Settings.")
     const openai = createOpenAI({ baseURL: "https://openrouter.ai/api/v1", apiKey, headers: { "HTTP-Referer": "https://prausdit.app", "X-Title": "Prausdit Research Lab" } })
     return openai(modelId)
   }
 
   const apiKey = settings?.geminiApiKey || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
-  if (!apiKey) throw new Error("Gemini API key not configured.\n\nSet GOOGLE_API_KEY in environment variables or configure in Settings → Manage API.")
+  if (!apiKey) throw new Error("Gemini API key not configured.\n\nSet GOOGLE_API_KEY in environment variables or configure in Settings.")
   const google = createGoogleGenerativeAI({ apiKey })
   return google(modelId)
 }
@@ -230,7 +279,6 @@ async function getModel(provider: "gemini" | "openrouter", modelId: string) {
 // ─── Tool Status Labels ───────────────────────────────────────────────────────
 
 const TOOL_LABELS: Record<string, string> = {
-  // Existing
   search_internal_docs:     "Searching knowledge base",
   get_knowledge_graph:      "Loading knowledge graph",
   read_document:            "Reading documentation",
@@ -250,60 +298,45 @@ const TOOL_LABELS: Record<string, string> = {
   get_model_leaderboard:    "Loading model leaderboard",
   crawl_web:                "Fetching web content",
   run_research_autopilot:   "Running research autopilot",
-  // New
   research:                 "Researching the web",
   generate_plan:            "Generating execution plan",
   update_plan:              "Refining plan",
   approve_plan:             "Recording plan approval",
   finalize_execution:       "Finalizing execution & saving report",
   upload_image:             "Uploading image to Cloudinary",
+  // NEW: Project management
+  list_projects:            "Listing all projects",
+  switch_project:           "Switching active project",
 }
 
 // ─── Workflow Intent Detection ────────────────────────────────────────────────
 
 function detectWorkflowIntent(message: string): string {
-  if (/start research|research for|research on|investigate/i.test(message))
-    return "Research Autopilot activated — analysing knowledge graph and planning research workflow..."
-  if (/plan experiments?|create experiments? for|design experiments?/i.test(message))
-    return "Experiment Planner activated — analysing datasets and designing experiment suite..."
-  if (/benchmark|evaluate model|score model|rank model/i.test(message))
-    return "Benchmark Automation activated — preparing evaluation pipeline..."
-  if (/analyse dataset|analyze dataset|dataset intelligence/i.test(message))
-    return "Dataset Intelligence activated — performing deep dataset analysis..."
-  if (/(training|pipeline|milestone|roadmap).*(done|complete|finished)|finished.*training/i.test(message))
-    return "Roadmap Autopilot activated — updating milestones and planning next steps..."
-  if (/\/document|create doc|write doc|generate doc|document this/i.test(message))
-    return "Documentation Automation activated — searching for existing docs first..."
-  if (/\/experiment/i.test(message))
-    return "Experiment creation mode — checking related experiments and datasets..."
-  if (/\/dataset/i.test(message))
-    return "Dataset registration mode — checking for similar datasets..."
-  if (/\/roadmap|roadmap.*plan|plan.*roadmap/i.test(message))
-    return "Roadmap planner — generating plan structure before creating..."
-  if (/\/note/i.test(message))
-    return "Research note mode — saving your note..."
-  if (/leaderboard|ranking|best model|top model/i.test(message))
-    return "Loading model leaderboard..."
-  // New intent patterns
-  if (/\bresearch\b|find out|look up|search for|investigate/i.test(message))
-    return "Researching... searching web providers with automatic fallback..."
-  if (/\bplan\b|create a plan|build a plan|design a/i.test(message))
-    return "Planning mode — generating structured plan for your approval..."
-  if (/^approve$|^yes$|go ahead|proceed with|execute the plan/i.test(message.trim()))
-    return "Executing approved plan..."
-  if (/upload.*image|image.*cloudinary|store.*image/i.test(message))
-    return "Uploading image to Cloudinary CDN..."
-  if (message.toLowerCase().includes("@documentation") || message.toLowerCase().includes("@docs"))
-    return "Fetching referenced documentation..."
-  if (/search|find|look up/i.test(message))
-    return "Searching knowledge base..."
+  if (/list.*projects?|show.*projects?|what projects?/i.test(message)) return "Loading project list..."
+  if (/switch.*project|select.*project|use.*project|change.*project/i.test(message)) return "Switching project context..."
+  if (/start research|research for|research on|investigate/i.test(message)) return "Research Autopilot activated..."
+  if (/plan experiments?|create experiments? for|design experiments?/i.test(message)) return "Experiment Planner activated..."
+  if (/benchmark|evaluate model|score model/i.test(message)) return "Benchmark Automation activated..."
+  if (/analyse dataset|analyze dataset/i.test(message)) return "Dataset Intelligence activated..."
+  if (/(training|pipeline|milestone|roadmap).*(done|complete|finished)/i.test(message)) return "Roadmap Autopilot activated..."
+  if (/\/(document|doc)|create doc|write doc/i.test(message)) return "Documentation Automation activated..."
+  if (/\/experiment/i.test(message)) return "Experiment creation mode..."
+  if (/\/dataset/i.test(message)) return "Dataset registration mode..."
+  if (/\/roadmap|roadmap.*plan/i.test(message)) return "Roadmap planner..."
+  if (/\/note/i.test(message)) return "Research note mode..."
+  if (/leaderboard|ranking|best model/i.test(message)) return "Loading model leaderboard..."
+  if (/\bresearch\b|find out|look up/i.test(message)) return "Researching..."
+  if (/\bplan\b|create a plan/i.test(message)) return "Planning mode..."
+  if (/^approve$|^yes$|go ahead|proceed with/i.test(message.trim())) return "Executing approved plan..."
+  if (/upload.*image|image.*cloudinary/i.test(message)) return "Uploading image to Cloudinary..."
+  if (/search|find|look up/i.test(message)) return "Searching knowledge base..."
   return "Agent thinking..."
 }
 
 // ─── Main Agent Runner ────────────────────────────────────────────────────────
 
 export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
-  const { message, history, provider, model, systemContext } = options
+  const { message, history, provider, model, systemContext, currentProjectId } = options
   const encoder = new TextEncoder()
 
   function evt(payload: object): Uint8Array {
@@ -321,8 +354,11 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
         const initialStatus = detectWorkflowIntent(message)
         controller.enqueue(evt({ type: "status", text: initialStatus, step: 0 }))
 
-        // Build system prompt — loads active agent files from DB
-        const systemPrompt = await buildSystemPrompt(systemContext)
+        // Build system prompt — injects current project context
+        const systemPrompt = await buildSystemPrompt(currentProjectId, systemContext)
+
+        // Use project-scoped tools so projectId is auto-injected
+        const tools = buildProjectScopedTools(currentProjectId)
 
         const aiModel = await getModel(provider, model)
         let stepNum = 0
@@ -331,7 +367,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
           model: aiModel,
           system: systemPrompt,
           messages,
-          tools: agentTools,
+          tools,
           stopWhen: stepCountIs(20),
           maxRetries: 1,
           temperature: 0.65,
@@ -348,6 +384,20 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
               const resultPreview = typeof chunk.output === "object"
                 ? JSON.stringify(chunk.output).slice(0, 200)
                 : String(chunk.output ?? "").slice(0, 200)
+
+              // Check for switch_project action — emit special event for UI
+              if (chunk.toolName === "switch_project" && typeof chunk.output === "object") {
+                const output = chunk.output as Record<string, unknown>
+                if (output.__action === "SWITCH_PROJECT" && output.__projectId) {
+                  controller.enqueue(evt({
+                    type: "project_switch",
+                    projectId: output.__projectId,
+                    projectName: output.__projectName,
+                    text: `Switched to project: ${output.__projectName}`,
+                  }))
+                }
+              }
+
               controller.enqueue(evt({ type: "tool_result", tool: chunk.toolName, text: `${TOOL_LABELS[chunk.toolName] || chunk.toolName} complete`, result: chunk.output, resultPreview, step: stepNum }))
               controller.enqueue(evt({ type: "status", text: "Analysing results...", step: stepNum }))
             }

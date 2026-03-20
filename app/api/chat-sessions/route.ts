@@ -162,7 +162,7 @@ export async function POST(req: Request) {
     }
 
     const { dbUser } = resolved
-    const { title, visibility } = await req.json().catch(() => ({}))
+    const { title, visibility, projectId } = await req.json().catch(() => ({}))
 
     const session = await prisma.chatSession.create({
       data: {
@@ -170,6 +170,7 @@ export async function POST(req: Request) {
         creatorId:   userId,
         creatorName: dbUser.name || dbUser.email,
         visibility:  visibility === "private" ? "private" : "team",
+        projectId:   projectId || null,
       },
     })
 

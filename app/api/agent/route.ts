@@ -2,43 +2,52 @@
  * POST /api/agent
  *
  * Agentic chat endpoint powered by the Vercel AI SDK.
- * Replaces /api/chat for the main chat widget.
- * /api/chat is kept for backward compatibility.
+ * Now accepts `currentProjectId` from the client and forwards it to
+ * the agent engine for project-scoped tool injection.
  *
- * Auth: Requires a Clerk session. The agent runs with the permissions of the
- * logged-in user. Super-admin is checked BEFORE the DB so DB failures never
- * block the super admin.
+ * Auth: Requires a Clerk session.
  *
  * Stream format (SSE):
- *   data: { type: "status",      text: "🔍 Searching…",   step: N }
- *   data: { type: "tool_call",   tool: "search_internal_docs", text: "…", args: {…}, step: N }
- *   data: { type: "tool_result", tool: "search_internal_docs", result: {…}, step: N }
- *   data: { type: "text",        text: "…" }          ← streamed tokens
+ *   data: { type: "status",        text: "Searching...",  step: N }
+ *   data: { type: "tool_call",     tool: "...", text: "...", args: {...}, step: N }
+ *   data: { type: "tool_result",   tool: "...", result: {...}, step: N }
+ *   data: { type: "text",          text: "..." }
+ *   data: { type: "project_switch", projectId: "...", projectName: "..." }
  *   data: { type: "done" }
- *   data: { type: "error",       text: "…" }
+ *   data: { type: "error",         text: "..." }
  */
 
 import { NextResponse } from "next/server"
 import { requireWriteAuth } from "@/lib/api-auth"
 import { runAgent } from "@/lib/agent-engine"
 
-export const maxDuration = 120 // Allow up to 2 min for agentic loops
+export const maxDuration = 120
 
 export async function POST(req: Request) {
-  // requireWriteAuth checks super_admin by email FIRST (no DB needed),
-  // then falls back to DB role lookup for other users.
   const authResult = await requireWriteAuth()
   if (!authResult.ok) return authResult.response
 
   try {
     const body = await req.json()
-    const { message, history = [], provider = "gemini", model = "gemini-2.5-flash" } = body
+    const {
+      message,
+      history = [],
+      provider = "gemini",
+      model = "gemini-2.5-flash",
+      currentProjectId,   // ← NEW: project context from UI
+    } = body
 
     if (!message?.trim()) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 })
     }
 
-    const stream = runAgent({ message: message.trim(), history, provider, model })
+    const stream = runAgent({
+      message: message.trim(),
+      history,
+      provider,
+      model,
+      currentProjectId: currentProjectId || null,  // ← forwarded to engine
+    })
 
     return new Response(stream, {
       headers: {
@@ -54,4 +63,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
-

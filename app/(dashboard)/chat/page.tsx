@@ -1120,3 +1120,63 @@ export default function FullscreenChatPage() {
     </div>
   )
 }
+ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-medium hover:bg-red-500/20 transition-colors active:scale-95">
+                  <X className="w-3.5 h-3.5" /> Stop
+                </button>
+              )}
+            </div>
+
+            {/* Textarea + # project dropdown */}
+            <div className="relative">
+              {showHashDropdown && (
+                <ProjectHashDropdown
+                  projects={filteredProjects}
+                  onSelect={handleProjectHashSelect}
+                  onClose={() => setShowHashDropdown(false)}
+                />
+              )}
+              <div className="flex items-end gap-3 bg-muted rounded-xl px-4 py-3 border border-border transition-colors">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={e => {
+                    setInput(e.target.value)
+                    const textarea = e.target
+                    textarea.style.height = "auto"
+                    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 44), 140)}px`
+                  }}
+                  onKeyDown={handleKeyDown}
+                  placeholder={selectedProject ? `Ask about ${selectedProject.name}... (# to switch project, / for commands)` : "Ask a question... (# to select project, / for commands)"}
+                  rows={1}
+                  className="flex-1 bg-transparent text-foreground text-[14px] outline-none resize-none placeholder:text-muted-foreground leading-relaxed focus:ring-0 focus:outline-none caret-amber-400"
+                  style={{ minHeight: "44px", maxHeight: "140px" }}
+                />
+                <button
+                  onClick={() => sendMessage(input)}
+                  disabled={!input.trim() || isStreaming || showHashDropdown}
+                  className={cn("p-2.5 rounded-lg transition-all flex-shrink-0 active:scale-95", input.trim() && !isStreaming ? "bg-amber-500 text-black hover:bg-amber-400" : "text-muted-foreground bg-muted-foreground/10")}
+                >
+                  {isStreaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Active project context pill */}
+            {selectedProject && (
+              <div className="flex items-center gap-2 mt-2 px-1">
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60">
+                  <FolderOpen className="w-3 h-3 text-amber-400/50" />
+                  <span>All operations scoped to</span>
+                  <span className="text-amber-400/70 font-medium">{selectedProject.name}</span>
+                  <button onClick={() => selectProject(null)} className="ml-1 text-muted-foreground/40 hover:text-muted-foreground transition-colors" title="Clear project">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
