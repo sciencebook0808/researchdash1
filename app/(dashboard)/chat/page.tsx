@@ -1082,49 +1082,6 @@ export default function FullscreenChatPage() {
                 </button>
               )}
             </div>
-            
-            {/* Improved textarea */}
-            <div className="flex items-end gap-3 bg-muted rounded-xl px-4 py-3 border border-border transition-colors">
-              <textarea 
-                ref={inputRef} 
-                value={input} 
-                onChange={e => {
-                  setInput(e.target.value)
-                  // Auto-resize
-                  const textarea = e.target
-                  textarea.style.height = 'auto'
-                  textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 44), 140)}px`
-                }} 
-                onKeyDown={handleKeyDown}
-                placeholder="Ask a question, use /command to create..."
-                rows={1}
-                className="flex-1 bg-transparent text-foreground text-[14px] outline-none resize-none placeholder:text-muted-foreground leading-relaxed focus:ring-0 focus:outline-none caret-amber-400"
-                style={{ minHeight: '44px', maxHeight: '140px' }}
-              />
-              <button 
-                onClick={() => sendMessage(input)} 
-                disabled={!input.trim() || isStreaming}
-                className={cn(
-                  "p-2.5 rounded-lg transition-all flex-shrink-0 active:scale-95", 
-                  input.trim() && !isStreaming 
-                    ? "bg-amber-500 text-black hover:bg-amber-400" 
-                    : "text-muted-foreground bg-muted-foreground/10"
-                )}
-              >
-                {isStreaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-medium hover:bg-red-500/20 transition-colors active:scale-95">
-                  <X className="w-3.5 h-3.5" /> Stop
-                </button>
-              )}
-            </div>
 
             {/* Textarea + # project dropdown */}
             <div className="relative">
