@@ -456,14 +456,13 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
           // Allow up to 50 tool-call rounds so complex plans (10+ steps) run to completion.
           // stepCountIs counts each LLM call (text generation OR tool call) as one step,
           // so 50 gives ~25 actual tool executions without hitting the limit prematurely.
+          // stopWhen: stepCountIs(N) is the correct AI SDK v6 API for multi-step execution.
+          // Each LLM call (text or tool) counts as one step; 50 gives ~25 real tool calls.
           stopWhen: stepCountIs(50),
-          // Keep retrying on transient errors so one bad tool call doesn't kill the run
+          // Retry transient errors so one bad tool call doesn't kill the whole run
           maxRetries: 2,
-          // Lower temperature for execution phase — reduces hallucinated "done" responses
+          // Lower temperature reduces hallucinated "I'm done" responses mid-execution
           temperature: 0.4,
-          // AI SDK v6 — experimental_continueSteps tells the model it MUST keep calling
-          // tools until the task is fully complete rather than stopping to summarise early.
-          experimental_continueSteps: true,
         })
 
         for await (const chunk of result.fullStream) {
