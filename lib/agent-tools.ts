@@ -761,7 +761,7 @@ export function buildProjectScopedTools(currentProjectId: string | null | undefi
   const scoped: Record<string, unknown> = {}
   for (const [name, t] of Object.entries(agentTools)) {
     if (PROJECT_SCOPED_TOOLS.has(name)) {
-      const originalExecute = (t as { execute: AnyToolExecute }).execute
+      const originalExecute = (t as unknown as { execute: AnyToolExecute }).execute
       scoped[name] = {
         ...t,
         execute: async (args: Record<string, unknown>) => originalExecute({ ...args, projectId: currentProjectId }),
