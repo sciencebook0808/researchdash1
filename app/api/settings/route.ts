@@ -56,6 +56,7 @@ function buildSettingsResponse(settings: Record<string, unknown> | null) {
       hasFirecrawlKey:          false,
       hasCrawl4aiUrl:           false,
       // Cloudinary flags
+      imageGenerationModel:      "auto",
       hasCloudinaryCloudName:   false,
       hasCloudinaryUploadPreset:false,
       hasCloudinaryApiKey:      false,
@@ -79,6 +80,7 @@ function buildSettingsResponse(settings: Record<string, unknown> | null) {
     hasCrawl4aiUrl:            !!settings.crawl4aiUrl,
     crawl4aiUrl:               settings.crawl4aiUrl || null,  // URL is safe to expose
     // Cloudinary flags
+    imageGenerationModel:      (settings.imageGenerationModel as string) || "auto",
     hasCloudinaryCloudName:    !!settings.cloudinaryCloudName,
     hasCloudinaryUploadPreset: !!settings.cloudinaryUploadPreset,
     hasCloudinaryApiKey:       !!settings.cloudinaryApiKey,
@@ -134,6 +136,7 @@ export async function POST(req: Request) {
       // Crawl provider keys (new)
       firecrawlApiKey,
       crawl4aiUrl,
+      imageGenerationModel,
       // Cloudinary keys (new)
       cloudinaryCloudName,
       cloudinaryUploadPreset,
@@ -159,6 +162,7 @@ export async function POST(req: Request) {
     if (crawl4aiUrl     !== undefined) data.crawl4aiUrl     = crawl4aiUrl     === "" ? null : crawl4aiUrl
 
     // ── Cloudinary ────────────────────────────────────────────────────────────
+    if (imageGenerationModel   !== undefined) data.imageGenerationModel   = imageGenerationModel   || "auto"
     if (cloudinaryCloudName    !== undefined) data.cloudinaryCloudName    = cloudinaryCloudName    === "" ? null : cloudinaryCloudName
     if (cloudinaryUploadPreset !== undefined) data.cloudinaryUploadPreset = cloudinaryUploadPreset === "" ? null : cloudinaryUploadPreset
     if (cloudinaryApiKey       !== undefined) data.cloudinaryApiKey       = cloudinaryApiKey       === "" ? null : cloudinaryApiKey

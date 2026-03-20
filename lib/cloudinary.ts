@@ -1,194 +1,161 @@
 /**
- * Prausdit Research Lab — Cloudinary Integration
+ * Prausdit Research Lab — Cloudinary Integration (lib/cloudinary.ts)
  *
- * Handles image upload to Cloudinary CDN.
- * Used by the agent when `generate_plan` or execution includes images.
+ * NOTE: The agent tools (lib/agent-tools.ts) have their own inline Cloudinary
+ * helpers that read keys DB-first. This file exists for any non-agent code
+ * that needs Cloudinary (e.g. direct API routes). It also reads DB-first.
  *
- * Flow:
- *   1. Receive Buffer or base64 image data
- *   2. Upload to Cloudinary (unsigned or signed based on config)
- *   3. Return secure CDN URL for storage/display
+ * Key reading priority: DB (AISettings) → process.env → null
  *
- * Required env vars:
- *   CLOUDINARY_CLOUD_NAME
- *   CLOUDINARY_UPLOAD_PRESET   (unsigned preset, or)
- *   CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET  (signed upload)
+ * Upload paths supported:
+ *   1. Unsigned (uploadPreset configured)        — simplest, recommended
+ *   2. Signed   (apiKey + CLOUDINARY_API_SECRET) — for production signed uploads
  */
 
+import { prisma } from "./prisma"
+
 export interface CloudinaryUploadResult {
-  url: string           // secure HTTPS CDN URL
-  publicId: string      // cloudinary public_id
-  width?: number
-  height?: number
-  format?: string
-  bytes?: number
+  url:      string    // secure HTTPS CDN URL
+  publicId: string    // cloudinary public_id
+  width?:   number
+  height?:  number
+  format?:  string
+  bytes?:   number
 }
 
 export interface CloudinaryConfig {
-  cloudName: string
-  uploadPreset?: string   // for unsigned uploads
-  apiKey?: string         // for signed uploads
-  apiSecret?: string      // for signed uploads
-  folder?: string         // optional subfolder
+  cloudName:    string
+  uploadPreset: string | null
+  apiKey:       string | null
+  apiSecret:    string | null   // only from env, never stored in DB
+  folder:       string
 }
 
-function getCloudinaryConfig(): CloudinaryConfig | null {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME
+// ── DB-first config reader ────────────────────────────────────────────────────
+
+export async function getCloudinaryConfig(): Promise<CloudinaryConfig | null> {
+  let dbSettings: {
+    cloudinaryCloudName?: string | null
+    cloudinaryUploadPreset?: string | null
+    cloudinaryApiKey?: string | null
+  } | null = null
+
+  try {
+    dbSettings = await prisma.aISettings.findFirst({
+      select: {
+        cloudinaryCloudName:    true,
+        cloudinaryUploadPreset: true,
+        cloudinaryApiKey:       true,
+      },
+    })
+  } catch { /* DB unavailable — fall through to env */ }
+
+  const cloudName =
+    dbSettings?.cloudinaryCloudName    || process.env.CLOUDINARY_CLOUD_NAME    || null
   if (!cloudName) return null
+
   return {
     cloudName,
-    uploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET,
-    apiKey:       process.env.CLOUDINARY_API_KEY,
-    apiSecret:    process.env.CLOUDINARY_API_SECRET,
+    uploadPreset: dbSettings?.cloudinaryUploadPreset || process.env.CLOUDINARY_UPLOAD_PRESET || null,
+    apiKey:       dbSettings?.cloudinaryApiKey       || process.env.CLOUDINARY_API_KEY       || null,
+    apiSecret:    process.env.CLOUDINARY_API_SECRET || null,  // never stored in DB
     folder:       process.env.CLOUDINARY_FOLDER || "prausdit-lab",
   }
 }
 
-/**
- * Upload an image buffer to Cloudinary.
- * Tries unsigned upload first (if preset configured), falls back to signed.
- */
-export async function uploadToCloudinary(
-  imageData: Buffer | string,   // Buffer or base64 string
-  options: {
-    filename?: string
-    folder?: string
-    tags?: string[]
-  } = {}
-): Promise<CloudinaryUploadResult | null> {
-  const config = getCloudinaryConfig()
-  if (!config) {
-    console.warn("[cloudinary] CLOUDINARY_CLOUD_NAME not set — image upload skipped")
-    return null
-  }
+export async function isCloudinaryConfigured(): Promise<boolean> {
+  const cfg = await getCloudinaryConfig()
+  return !!cfg && (!!cfg.uploadPreset || (!!cfg.apiKey && !!cfg.apiSecret))
+}
 
-  // Convert buffer to base64 data URI if needed
+// ── Upload helpers ────────────────────────────────────────────────────────────
+
+export async function uploadToCloudinary(
+  imageData: Buffer | string,
+  options: { filename?: string; folder?: string; tags?: string[] } = {}
+): Promise<CloudinaryUploadResult | { error: string }> {
+  const cfg = await getCloudinaryConfig()
+  if (!cfg) return { error: "CLOUDINARY_CLOUD_NAME not configured. Add it in Settings → Manage API." }
+
   const base64 = Buffer.isBuffer(imageData)
     ? `data:image/png;base64,${imageData.toString("base64")}`
     : imageData.startsWith("data:") ? imageData : `data:image/png;base64,${imageData}`
 
-  const folder   = options.folder   || config.folder || "prausdit-lab"
+  const folder   = options.folder   || cfg.folder
   const tags     = options.tags     || ["agent-generated"]
   const filename = options.filename || `img-${Date.now()}`
 
-  // Try unsigned upload (simpler, no signature needed)
-  if (config.uploadPreset) {
-    return unsignedUpload(base64, { ...config, folder, tags, filename })
+  // Path 1: Unsigned upload
+  if (cfg.uploadPreset) {
+    try {
+      const body = new FormData()
+      body.append("file", base64)
+      body.append("upload_preset", cfg.uploadPreset)
+      body.append("folder", folder)
+      body.append("public_id", filename)
+      body.append("tags", tags.join(","))
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`, {
+        method: "POST", body, signal: AbortSignal.timeout(30000),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        return { error: `Cloudinary upload failed HTTP ${res.status}: ${(err as Record<string,unknown>).error || res.statusText}` }
+      }
+      const data = await res.json()
+      return { url: data.secure_url, publicId: data.public_id, width: data.width, height: data.height, format: data.format, bytes: data.bytes }
+    } catch (e) { return { error: `Upload exception: ${String(e)}` } }
   }
 
-  // Signed upload fallback
-  if (config.apiKey && config.apiSecret) {
-    return signedUpload(base64, { ...config, folder, tags, filename })
+  // Path 2: Signed upload
+  if (cfg.apiKey && cfg.apiSecret) {
+    try {
+      const { createHmac } = await import("crypto")
+      const timestamp = Math.floor(Date.now() / 1000)
+      const paramsToSign = [`folder=${folder}`, `public_id=${filename}`, `tags=${tags.join(",")}`, `timestamp=${timestamp}`].sort().join("&")
+      const signature = createHmac("sha1", cfg.apiSecret).update(paramsToSign).digest("hex")
+      const body = new FormData()
+      body.append("file", base64)
+      body.append("api_key", cfg.apiKey)
+      body.append("timestamp", String(timestamp))
+      body.append("signature", signature)
+      body.append("folder", folder)
+      body.append("public_id", filename)
+      body.append("tags", tags.join(","))
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`, {
+        method: "POST", body, signal: AbortSignal.timeout(30000),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        return { error: `Cloudinary signed upload failed HTTP ${res.status}: ${(err as Record<string,unknown>).error || res.statusText}` }
+      }
+      const data = await res.json()
+      return { url: data.secure_url, publicId: data.public_id, width: data.width, height: data.height, format: data.format, bytes: data.bytes }
+    } catch (e) { return { error: `Signed upload exception: ${String(e)}` } }
   }
 
-  console.warn("[cloudinary] No upload preset or API key/secret configured")
-  return null
+  return { error: "Cloudinary not fully configured. Set CLOUDINARY_UPLOAD_PRESET (unsigned) or CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET (signed) in Settings or env vars." }
 }
 
-async function unsignedUpload(
-  base64: string,
-  config: CloudinaryConfig & { folder: string; tags: string[]; filename: string }
-): Promise<CloudinaryUploadResult | null> {
-  try {
-    const body = new FormData()
-    body.append("file", base64)
-    body.append("upload_preset", config.uploadPreset!)
-    body.append("folder", config.folder)
-    body.append("public_id", config.filename)
-    body.append("tags", config.tags.join(","))
-
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`,
-      { method: "POST", body, signal: AbortSignal.timeout(30000) }
-    )
-    if (!res.ok) return null
-    const data = await res.json()
-    return {
-      url:      data.secure_url,
-      publicId: data.public_id,
-      width:    data.width,
-      height:   data.height,
-      format:   data.format,
-      bytes:    data.bytes,
-    }
-  } catch {
-    return null
-  }
-}
-
-async function signedUpload(
-  base64: string,
-  config: CloudinaryConfig & { folder: string; tags: string[]; filename: string }
-): Promise<CloudinaryUploadResult | null> {
-  try {
-    // Build signature (requires crypto, available in Node 18+)
-    const { createHash, createHmac } = await import("crypto")
-    const timestamp = Math.floor(Date.now() / 1000)
-
-    const paramsToSign = [
-      `folder=${config.folder}`,
-      `public_id=${config.filename}`,
-      `tags=${config.tags.join(",")}`,
-      `timestamp=${timestamp}`,
-    ].sort().join("&")
-
-    const signature = createHmac("sha1", config.apiSecret!)
-      .update(paramsToSign)
-      .digest("hex")
-
-    void createHash // suppress unused warning
-
-    const body = new FormData()
-    body.append("file", base64)
-    body.append("api_key", config.apiKey!)
-    body.append("timestamp", String(timestamp))
-    body.append("signature", signature)
-    body.append("folder", config.folder)
-    body.append("public_id", config.filename)
-    body.append("tags", config.tags.join(","))
-
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`,
-      { method: "POST", body, signal: AbortSignal.timeout(30000) }
-    )
-    if (!res.ok) return null
-    const data = await res.json()
-    return {
-      url:      data.secure_url,
-      publicId: data.public_id,
-      width:    data.width,
-      height:   data.height,
-      format:   data.format,
-      bytes:    data.bytes,
-    }
-  } catch {
-    return null
-  }
-}
-
-/**
- * Download an image from a URL, then upload to Cloudinary.
- * Useful when an AI-generated image URL needs to be persisted.
- */
 export async function downloadAndUpload(
   imageUrl: string,
   options: { filename?: string; folder?: string; tags?: string[] } = {}
-): Promise<CloudinaryUploadResult | null> {
+): Promise<CloudinaryUploadResult | { error: string }> {
+  if (!imageUrl.startsWith("https://")) {
+    return { error: `Image URL must start with https:// — got: ${imageUrl.slice(0, 60)}` }
+  }
   try {
-    if (!imageUrl.startsWith("https://")) return null
-    const res = await fetch(imageUrl, { signal: AbortSignal.timeout(20000) })
-    if (!res.ok) return null
+    const res = await fetch(imageUrl, {
+      headers: { "User-Agent": "Prausdit-LabBot/2.0" },
+      signal: AbortSignal.timeout(20000),
+    })
+    if (!res.ok) return { error: `Failed to fetch image — HTTP ${res.status}: ${res.statusText}` }
+    const ct = res.headers.get("content-type") || ""
+    if (!ct.startsWith("image/")) {
+      return { error: `URL does not point to an image (content-type: ${ct})` }
+    }
     const buffer = Buffer.from(await res.arrayBuffer())
     return uploadToCloudinary(buffer, options)
-  } catch {
-    return null
+  } catch (e) {
+    return { error: `Failed to download image: ${String(e)}` }
   }
-}
-
-/** Check if Cloudinary is configured */
-export function isCloudinaryConfigured(): boolean {
-  return !!process.env.CLOUDINARY_CLOUD_NAME && (
-    !!process.env.CLOUDINARY_UPLOAD_PRESET ||
-    (!!process.env.CLOUDINARY_API_KEY && !!process.env.CLOUDINARY_API_SECRET)
-  )
 }

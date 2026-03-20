@@ -368,6 +368,7 @@ model AISettings {
   serpApiKey             String?
   firecrawlApiKey        String?
   crawl4aiUrl            String?
+  imageGenerationModel   String?  @default("auto") // auto | gemini-2.0-flash-image | gemini-2.5-flash-image | imagen-4 | google/gemini-2.5-flash-image | google/gemini-3.1-flash-image-preview | openai/gpt-5-image-mini | bytedance/seedream-4.5 | sourceful/riverflow-v2-fast
   cloudinaryCloudName    String?
   cloudinaryUploadPreset String?
   cloudinaryApiKey       String?

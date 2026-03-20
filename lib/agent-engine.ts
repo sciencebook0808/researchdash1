@@ -14,7 +14,7 @@ import { createOpenAI } from "@ai-sdk/openai"
 import { prisma } from "./prisma"
 import { agentTools, buildProjectScopedTools } from "./agent-tools"
 
-// ─── Types ─────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface AgentMessage {
   role: "user" | "assistant"
@@ -95,11 +95,30 @@ Simple requests (read doc, search KB, single quick answer) do NOT need a plan.
 - Use \`crawl_web\` ONLY for fetching a single specific known URL
 - Never call search/crawl APIs manually
 
-### Rule 3 — IMAGES GO TO CLOUDINARY
-If execution includes images:
-1. Generate or obtain image URL
-2. Call \`upload_image\` → get permanent Cloudinary CDN URL
-3. ONLY store/display Cloudinary URLs in documents/notes
+### Rule 3 — IMAGE GENERATION & UPLOAD
+You CAN generate images using Gemini multimodal models via the \`generate_image\` tool.
+The tool generates the image AND uploads it to Cloudinary in one step — you get back a permanent CDN URL.
+
+**When to generate an image automatically:**
+- Creating documentation, notes, or reports where a diagram would help
+- User asks for any visual: architecture diagram, flowchart, illustration, chart
+- Explaining a technical concept that benefits from a visual
+- Any \`/document\` or \`/note\` command involving systems, pipelines, or architectures
+
+**Workflow:**
+1. Call \`generate_image\` with a detailed prompt describing the image
+2. Use the returned \`cloudinaryUrl\` — embed in markdown as \`![description](url)\`
+3. ONLY embed Cloudinary CDN URLs — NEVER use placeholder or example.com URLs
+4. If \`generate_image\` fails, report the exact error — do NOT insert fake image links
+5. For uploading an EXISTING image URL: use \`upload_image\` instead
+
+**Model selection:**
+The model is configured in Settings → Image Generation. The agent uses whichever model the user has selected.
+- \`auto\` (default) — smart routing: diagrams → Gemini Flash (fast/free), quality → Nano Banana 2
+- Gemini Direct models: gemini-2.0-flash-image (free), gemini-2.5-flash-image, imagen-4
+- OpenRouter models: google/gemini-3.1-flash-image-preview (Nano Banana 2), openai/gpt-5-image-mini, bytedance/seedream-4.5, sourceful/riverflow-v2-fast
+
+Always pass \`model: "auto"\` unless the user explicitly asks for a specific model.
 
 ### Rule 4 — SEARCH BEFORE CREATE
 Always \`search_internal_docs\` before creating any entity to avoid duplicates.
@@ -135,7 +154,8 @@ When user says "select project X" → call \`switch_project\`
 - \`finalize_execution\` — Record completion + Cloudinary uploads
 
 ### Images
-- \`upload_image\` — Upload URL → Cloudinary CDN → permanent HTTPS URL
+- \`generate_image\` — **Generate** an image using Gemini multimodal models (auto/gemini-image/imagen-4) and upload to Cloudinary in one step. Returns a permanent CDN URL + markdown embed string. Use automatically when docs/notes/reports benefit from visuals.
+- \`upload_image\` — Upload an **existing HTTPS image URL** to Cloudinary CDN → permanent URL. Use when you already have an image URL (from web research etc.).
 
 ### Knowledge & RAG
 - \`search_internal_docs\` — Full-text search (project-scoped automatically)
@@ -325,6 +345,7 @@ const TOOL_LABELS: Record<string, string> = {
   update_plan:              "Refining plan",
   approve_plan:             "Recording plan approval",
   finalize_execution:       "Finalizing execution & saving report",
+  generate_image:           "Generating image with Gemini",
   upload_image:             "Uploading image to Cloudinary",
   // NEW: Project management
   list_projects:            "Listing all projects",
@@ -350,6 +371,7 @@ function detectWorkflowIntent(message: string): string {
   if (/\bresearch\b|find out|look up/i.test(message)) return "Researching..."
   if (/\bplan\b|create a plan/i.test(message)) return "Planning mode..."
   if (/^approve$|^yes$|go ahead|proceed with/i.test(message.trim())) return "Executing approved plan..."
+  if (/generate.*image|create.*image|make.*image|draw|diagram|illustration|visuali/i.test(message)) return "Generating image with Gemini..."
   if (/upload.*image|image.*cloudinary/i.test(message)) return "Uploading image to Cloudinary..."
   if (/search|find|look up/i.test(message)) return "Searching knowledge base..."
   return "Agent thinking..."

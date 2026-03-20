@@ -364,12 +364,14 @@ interface CloudinaryUploadResult {
   url: string; publicId: string; width?: number; height?: number; format?: string; bytes?: number
 }
 
+// Fix 2: Added signed upload fallback (apiKey + apiSecret via env)
+// Fix 3: All errors now return a reason string instead of silently returning null
 async function uploadToCloudinary(
   imageData: Buffer | string,
   options: { filename?: string; folder?: string; tags?: string[] } = {}
-): Promise<CloudinaryUploadResult | null> {
+): Promise<CloudinaryUploadResult | { error: string }> {
   const cfg = await getCloudinaryConfig()
-  if (!cfg.cloudName) return null
+  if (!cfg.cloudName) return { error: "CLOUDINARY_CLOUD_NAME not configured. Add it in Settings → Manage API → Cloudinary." }
 
   const base64 = Buffer.isBuffer(imageData)
     ? `data:image/png;base64,${imageData.toString("base64")}`
@@ -379,6 +381,7 @@ async function uploadToCloudinary(
   const tags     = options.tags     || ["agent-generated"]
   const filename = options.filename || `img-${Date.now()}`
 
+  // Path 1: Unsigned upload (requires upload preset)
   if (cfg.uploadPreset) {
     try {
       const body = new FormData()
@@ -390,25 +393,397 @@ async function uploadToCloudinary(
       const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`, {
         method: "POST", body, signal: AbortSignal.timeout(30000),
       })
-      if (!res.ok) return null
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        return { error: `Cloudinary upload failed HTTP ${res.status}: ${(errData as Record<string,unknown>).error || res.statusText}` }
+      }
       const data = await res.json()
       return { url: data.secure_url, publicId: data.public_id, width: data.width, height: data.height, format: data.format, bytes: data.bytes }
-    } catch { return null }
+    } catch (e) {
+      return { error: `Cloudinary unsigned upload exception: ${String(e)}` }
+    }
   }
-  return null
+
+  // Path 2: Signed upload (requires apiKey + apiSecret from env)
+  const apiSecret = process.env.CLOUDINARY_API_SECRET
+  if (cfg.apiKey && apiSecret) {
+    try {
+      const { createHmac } = await import("crypto")
+      const timestamp = Math.floor(Date.now() / 1000)
+      const paramsToSign = [
+        `folder=${folder}`,
+        `public_id=${filename}`,
+        `tags=${tags.join(",")}`,
+        `timestamp=${timestamp}`,
+      ].sort().join("&")
+      const signature = createHmac("sha1", apiSecret).update(paramsToSign).digest("hex")
+      const body = new FormData()
+      body.append("file", base64)
+      body.append("api_key", cfg.apiKey)
+      body.append("timestamp", String(timestamp))
+      body.append("signature", signature)
+      body.append("folder", folder)
+      body.append("public_id", filename)
+      body.append("tags", tags.join(","))
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`, {
+        method: "POST", body, signal: AbortSignal.timeout(30000),
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        return { error: `Cloudinary signed upload failed HTTP ${res.status}: ${(errData as Record<string,unknown>).error || res.statusText}` }
+      }
+      const data = await res.json()
+      return { url: data.secure_url, publicId: data.public_id, width: data.width, height: data.height, format: data.format, bytes: data.bytes }
+    } catch (e) {
+      return { error: `Cloudinary signed upload exception: ${String(e)}` }
+    }
+  }
+
+  return { error: "Cloudinary not fully configured. Set CLOUDINARY_UPLOAD_PRESET (unsigned) or CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET (signed) in Settings or env vars." }
 }
 
+// Fix 3: downloadAndUpload now returns error reason instead of null
 async function downloadAndUpload(
   imageUrl: string,
   options: { filename?: string; folder?: string; tags?: string[] } = {}
-): Promise<CloudinaryUploadResult | null> {
+): Promise<CloudinaryUploadResult | { error: string }> {
+  if (!imageUrl.startsWith("https://")) {
+    return { error: `Image URL must start with https:// — got: ${imageUrl.slice(0, 60)}` }
+  }
   try {
-    if (!imageUrl.startsWith("https://")) return null
-    const res = await fetch(imageUrl, { signal: AbortSignal.timeout(20000) })
-    if (!res.ok) return null
+    const res = await fetch(imageUrl, {
+      headers: { "User-Agent": "Prausdit-LabBot/2.0" },
+      signal: AbortSignal.timeout(20000),
+    })
+    if (!res.ok) return { error: `Failed to fetch image from URL — HTTP ${res.status}: ${res.statusText}` }
+    const ct = res.headers.get("content-type") || ""
+    if (!ct.startsWith("image/")) {
+      return { error: `URL does not point to an image (content-type: ${ct}). URL: ${imageUrl.slice(0, 80)}` }
+    }
     const buffer = Buffer.from(await res.arrayBuffer())
     return uploadToCloudinary(buffer, options)
-  } catch { return null }
+  } catch (e) {
+    return { error: `Failed to download image: ${String(e)}` }
+  }
+}
+
+// ── Image Generation — Multi-provider, settings-driven ───────────────────────
+//
+// Architecture inspired by Antigravity's multi-model orchestration:
+//   - Each task type routes to the most capable/efficient model
+//   - User configures preferred model in Settings → Image Generation
+//   - Auto mode does task-aware routing (diagram → fast model, quality → pro model)
+//
+// Provider paths:
+//   A. Gemini Direct (via @google/genai) — uses Gemini API key
+//      Models: gemini-2.0-flash-image, gemini-2.5-flash-image, imagen-4
+//   B. OpenRouter (via /api/v1/chat/completions) — uses OpenRouter API key
+//      Models: google/gemini-2.5-flash-image, google/gemini-3.1-flash-image-preview,
+//              openai/gpt-5-image-mini, bytedance/seedream-4.5, sourceful/riverflow-v2-fast
+//
+// Response format: both paths return base64 PNG → upload directly to Cloudinary
+// (no temp URL needed — cleaner pipeline, Cloudinary URL is the only stored reference)
+
+// ── Model catalog ─────────────────────────────────────────────────────────────
+
+export const IMAGE_MODEL_CATALOG = {
+  // ── Gemini Direct (use these when you have a Gemini API key) ─────────────
+  "gemini-2.0-flash-image": {
+    label: "Gemini 2.0 Flash Image",
+    provider: "gemini-direct" as const,
+    tier: "free",
+    best: "diagrams, illustrations, technical charts",
+    model: "gemini-2.0-flash-preview-image-generation",
+  },
+  "gemini-2.5-flash-image": {
+    label: "Gemini 2.5 Flash Image (Nano Banana)",
+    provider: "gemini-direct" as const,
+    tier: "paid",
+    best: "high-quality illustrations, editing, multi-image",
+    model: "gemini-2.5-flash-preview-image-generation",
+  },
+  "imagen-4": {
+    label: "Imagen 4",
+    provider: "gemini-direct" as const,
+    tier: "paid",
+    best: "photorealistic, brand assets, people",
+    model: "imagen-4-generate-002",
+  },
+  // ── OpenRouter (use these when you have an OpenRouter API key) ────────────
+  "google/gemini-2.5-flash-image": {
+    label: "Gemini 2.5 Flash Image via OpenRouter",
+    provider: "openrouter" as const,
+    tier: "paid",
+    best: "diagrams, charts, illustrations",
+    modalities: ["image", "text"] as string[],
+  },
+  "google/gemini-3.1-flash-image-preview": {
+    label: "Gemini 3.1 Flash Image (Nano Banana 2) via OpenRouter",
+    provider: "openrouter" as const,
+    tier: "paid",
+    best: "Pro-level quality at Flash speed, complex scenes",
+    modalities: ["image", "text"] as string[],
+  },
+  "openai/gpt-5-image-mini": {
+    label: "GPT-5 Image Mini via OpenRouter",
+    provider: "openrouter" as const,
+    tier: "paid",
+    best: "detailed edits, text rendering in images",
+    modalities: ["image", "text"] as string[],
+  },
+  "bytedance/seedream-4.5": {
+    label: "Seedream 4.5 via OpenRouter",
+    provider: "openrouter" as const,
+    tier: "paid",
+    best: "portrait, editing consistency, multi-image",
+    modalities: ["image"] as string[],
+  },
+  "sourceful/riverflow-v2-fast": {
+    label: "Riverflow V2 Fast via OpenRouter",
+    provider: "openrouter" as const,
+    tier: "paid",
+    best: "fastest generation, production workflows",
+    modalities: ["image"] as string[],
+  },
+} as const
+
+type ImageModelKey = keyof typeof IMAGE_MODEL_CATALOG
+
+// ── Task-aware auto routing (Antigravity-style) ───────────────────────────────
+
+function autoSelectImageModel(prompt: string, hasGeminiKey: boolean, hasOpenRouterKey: boolean): ImageModelKey {
+  const p = prompt.toLowerCase()
+  // Technical/diagram prompts → fast free Gemini model
+  const isTechnical = /diagram|architecture|flowchart|chart|graph|technical|pipeline|system|schema|wireframe|ui|layout|blueprint|infographic/i.test(p)
+  // High-quality/photorealistic → better model
+  const isHighQuality = /photorealistic|professional|brand|product|realistic|cinematic|4k|high.?quality|detailed|portrait/i.test(p)
+  // Research paper style → diagram model
+  const isResearch = /research|academic|scientific|paper|study|visualization|plot|figure/i.test(p)
+
+  if (hasOpenRouterKey) {
+    if (isHighQuality) return "google/gemini-3.1-flash-image-preview"
+    if (isTechnical || isResearch) return "google/gemini-2.5-flash-image"
+    return "google/gemini-2.5-flash-image"
+  }
+
+  if (hasGeminiKey) {
+    if (isHighQuality) return "imagen-4"
+    return "gemini-2.0-flash-image" // free, good for diagrams
+  }
+
+  return "gemini-2.0-flash-image" // fallback
+}
+
+// ── API key loaders ───────────────────────────────────────────────────────────
+
+async function getGeminiApiKey(): Promise<string | null> {
+  try {
+    const s = await prisma.aISettings.findFirst({ select: { geminiApiKey: true } })
+    return s?.geminiApiKey || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || null
+  } catch {
+    return process.env.GOOGLE_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || null
+  }
+}
+
+async function getOpenRouterApiKey(): Promise<string | null> {
+  try {
+    const s = await prisma.aISettings.findFirst({ select: { openrouterApiKey: true } })
+    return s?.openrouterApiKey || process.env.OPENROUTER_API_KEY || null
+  } catch {
+    return process.env.OPENROUTER_API_KEY || null
+  }
+}
+
+async function getImageGenerationModel(): Promise<string> {
+  try {
+    const s = await prisma.aISettings.findFirst({ select: { imageGenerationModel: true } })
+    return s?.imageGenerationModel || "auto"
+  } catch {
+    return "auto"
+  }
+}
+
+// ── Image gen result type ─────────────────────────────────────────────────────
+
+type ImageGenResult = {
+  success: true
+  cloudinaryUrl: string
+  publicId: string
+  model: string
+  bytes?: number
+} | {
+  success: false
+  error: string
+}
+
+// ── Path A: Gemini Direct ─────────────────────────────────────────────────────
+
+async function generateWithGeminiDirect(
+  prompt: string,
+  modelKey: "gemini-2.0-flash-image" | "gemini-2.5-flash-image" | "imagen-4",
+  apiKey: string,
+  options: { filename?: string; folder?: string; tags?: string[] }
+): Promise<ImageGenResult> {
+  const cfg = IMAGE_MODEL_CATALOG[modelKey]
+  try {
+    const { GoogleGenAI } = await import("@google/genai")
+    const ai = new GoogleGenAI({ apiKey })
+
+    if (modelKey === "imagen-4") {
+      // Imagen 4: uses generateImages API
+      const result = await (ai.models as Record<string, (opts: Record<string, unknown>) => Promise<Record<string, unknown>>>).generateImages({
+        model: cfg.model,
+        prompt,
+        config: { numberOfImages: 1, outputMimeType: "image/png" },
+      })
+      const images = (result as Record<string, unknown[]>).generatedImages
+      if (!images?.length) return { success: false, error: "Imagen 4 returned no images" }
+      const imgData = (images[0] as Record<string, Record<string, string>>).image
+      if (!imgData?.imageBytes) return { success: false, error: "Imagen 4 returned empty image bytes" }
+      const buffer = Buffer.from(imgData.imageBytes, "base64")
+      const upload = await uploadToCloudinary(buffer, { filename: options.filename || `imagen4-${Date.now()}`, folder: options.folder || "prausdit-lab/agent-generated", tags: options.tags || ["agent-generated", "imagen-4"] })
+      if ("error" in upload) return { success: false, error: `Generated OK but upload failed: ${upload.error}` }
+      return { success: true, cloudinaryUrl: upload.url, publicId: upload.publicId, model: cfg.model, bytes: upload.bytes }
+    }
+
+    // Gemini image models: uses generateContent with responseModalities
+    const result = await ai.models.generateContent({
+      model: cfg.model,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: { responseModalities: ["IMAGE"], temperature: 0.9 } as Record<string, unknown>,
+    })
+    const parts = result.candidates?.[0]?.content?.parts
+    if (!parts) return { success: false, error: `${cfg.label} returned no content` }
+    const imagePart = parts.find((p: Record<string, unknown>) => p.inlineData) as Record<string, Record<string, string>> | undefined
+    if (!imagePart?.inlineData?.data) return { success: false, error: `${cfg.label} returned no image data` }
+    const buffer = Buffer.from(imagePart.inlineData.data, "base64")
+    const upload = await uploadToCloudinary(buffer, { filename: options.filename || `gemini-img-${Date.now()}`, folder: options.folder || "prausdit-lab/agent-generated", tags: options.tags || ["agent-generated", "gemini-image"] })
+    if ("error" in upload) return { success: false, error: `Generated OK but upload failed: ${upload.error}` }
+    return { success: true, cloudinaryUrl: upload.url, publicId: upload.publicId, model: cfg.model, bytes: upload.bytes }
+  } catch (e) {
+    return { success: false, error: `${modelKey} generation failed: ${String(e)}` }
+  }
+}
+
+// ── Path B: OpenRouter ─────────────────────────────────────────────────────────
+
+async function generateWithOpenRouter(
+  prompt: string,
+  modelId: string,
+  apiKey: string,
+  options: { filename?: string; folder?: string; tags?: string[] }
+): Promise<ImageGenResult> {
+  const modelCfg = IMAGE_MODEL_CATALOG[modelId as ImageModelKey] as { modalities?: string[] } | undefined
+  const modalities = modelCfg?.modalities || ["image", "text"]
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://prausdit.app",
+        "X-Title": "Prausdit Research Lab",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        modalities,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      signal: AbortSignal.timeout(60000),
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      return { success: false, error: `OpenRouter ${modelId} failed HTTP ${res.status}: ${(err as Record<string,unknown>).error || res.statusText}` }
+    }
+
+    const data = await res.json()
+    const message = data?.choices?.[0]?.message
+
+    // OpenRouter returns images in message.images array
+    const imageUrl: string | undefined = message?.images?.[0]?.image_url?.url
+    if (imageUrl) {
+      const base64 = imageUrl.replace(/^data:image\/[a-z]+;base64,/, "")
+      const buffer = Buffer.from(base64, "base64")
+      const upload = await uploadToCloudinary(buffer, { filename: options.filename || `or-img-${Date.now()}`, folder: options.folder || "prausdit-lab/agent-generated", tags: options.tags || ["agent-generated", modelId.split("/").pop() || "openrouter"] })
+      if ("error" in upload) return { success: false, error: `Generated OK but upload failed: ${upload.error}` }
+      return { success: true, cloudinaryUrl: upload.url, publicId: upload.publicId, model: modelId, bytes: upload.bytes }
+    }
+
+    // Some models embed image in content array
+    const contentParts = Array.isArray(message?.content) ? message.content : []
+    for (const part of contentParts) {
+      const imgUrl = part?.image_url?.url || part?.url
+      if (imgUrl && imgUrl.startsWith("data:image")) {
+        const base64 = imgUrl.replace(/^data:image\/[a-z]+;base64,/, "")
+        const buffer = Buffer.from(base64, "base64")
+        const upload = await uploadToCloudinary(buffer, { filename: options.filename || `or-img-${Date.now()}`, folder: options.folder || "prausdit-lab/agent-generated", tags: options.tags || ["agent-generated"] })
+        if ("error" in upload) return { success: false, error: `Generated OK but upload failed: ${upload.error}` }
+        return { success: true, cloudinaryUrl: upload.url, publicId: upload.publicId, model: modelId, bytes: upload.bytes }
+      }
+    }
+
+    return { success: false, error: `OpenRouter ${modelId} response contained no image data. Response: ${JSON.stringify(message).slice(0, 200)}` }
+  } catch (e) {
+    return { success: false, error: `OpenRouter ${modelId} exception: ${String(e)}` }
+  }
+}
+
+// ── Main image generation dispatcher ─────────────────────────────────────────
+
+async function generateImage(
+  prompt: string,
+  requestedModel: string,   // "auto" | any ImageModelKey
+  options: { filename?: string; folder?: string; tags?: string[] } = {}
+): Promise<ImageGenResult> {
+  const cloudinaryReady = await isCloudinaryConfigured()
+  if (!cloudinaryReady) {
+    return { success: false, error: "Cloudinary not configured. Images are generated but cannot be stored. Add Cloudinary keys in Settings → Manage API → Cloudinary." }
+  }
+
+  const geminiKey = await getGeminiApiKey()
+  const openrouterKey = await getOpenRouterApiKey()
+
+  if (!geminiKey && !openrouterKey) {
+    return { success: false, error: "No API keys available. Add a Gemini API key or OpenRouter API key in Settings → Manage API." }
+  }
+
+  // Resolve "auto" to best available model based on task
+  let modelKey: string = requestedModel
+  if (modelKey === "auto") {
+    // Read the user's preferred image model from settings, or auto-route
+    const settingsModel = await getImageGenerationModel()
+    if (settingsModel && settingsModel !== "auto") {
+      modelKey = settingsModel
+    } else {
+      modelKey = autoSelectImageModel(prompt, !!geminiKey, !!openrouterKey)
+    }
+  }
+
+  const catalog = IMAGE_MODEL_CATALOG[modelKey as ImageModelKey]
+
+  if (!catalog) {
+    // Unknown model key — try as raw OpenRouter model ID
+    if (openrouterKey) return generateWithOpenRouter(prompt, modelKey, openrouterKey, options)
+    return { success: false, error: `Unknown image model: ${modelKey}` }
+  }
+
+  if (catalog.provider === "openrouter") {
+    if (!openrouterKey) {
+      // Fallback to Gemini direct
+      if (geminiKey) return generateWithGeminiDirect(prompt, "gemini-2.0-flash-image", geminiKey, options)
+      return { success: false, error: `OpenRouter API key not configured for model ${catalog.label}. Add it in Settings → Manage API.` }
+    }
+    return generateWithOpenRouter(prompt, modelKey, openrouterKey, options)
+  }
+
+  // Gemini direct
+  if (!geminiKey) {
+    // Fallback to OpenRouter Gemini
+    if (openrouterKey) return generateWithOpenRouter(prompt, "google/gemini-2.5-flash-image", openrouterKey, options)
+    return { success: false, error: `Gemini API key not configured for model ${catalog.label}. Add it in Settings → Manage API.` }
+  }
+  return generateWithGeminiDirect(prompt, modelKey as "gemini-2.0-flash-image" | "gemini-2.5-flash-image" | "imagen-4", geminiKey, options)
 }
 
 // ── Plan markdown builder ─────────────────────────────────────────────────────
@@ -840,7 +1215,7 @@ export const finalizeExecution = tool({
       if (imageUrls && imageUrls.length > 0 && cloudinaryReady) {
         for (const url of imageUrls.slice(0, 4)) {
           const result = await downloadAndUpload(url, { folder: "prausdit-lab/agent-generated", tags: ["agent-generated"] })
-          if (result) cloudinaryResults.push({ original: url, cloudinaryUrl: result.url })
+          if (result && "url" in result) cloudinaryResults.push({ original: url, cloudinaryUrl: result.url })
         }
       }
       const reportLines = [`# Execution Complete: ${executionTitle}`, "", `**Completed:** ${new Date().toISOString()}`, planNoteId ? `**Plan ID:** ${planNoteId}` : "", "", "## Summary", summary]
@@ -853,18 +1228,46 @@ export const finalizeExecution = tool({
   },
 })
 
+export const generateImageTool = tool({
+  description: "Generate an image using Gemini or OpenRouter image models and automatically upload it to Cloudinary CDN. Model is selected from Settings (auto-routing picks the best available model for the task type). Use whenever documentation, notes, or responses would benefit from a diagram, illustration, chart, or visual. Returns a permanent Cloudinary CDN URL and a ready-to-embed markdown string. DO NOT use placeholder URLs — if this fails, report the exact error.",
+  inputSchema: z.object({
+    prompt: z.string().describe("Detailed image generation prompt. Be specific: style, content, layout. E.g. 'A clean architecture diagram showing LoRA fine-tuning pipeline with data flow arrows, white background, technical style'"),
+    model: z.string().optional().default("auto").describe("Model override: 'auto' (default, uses Settings preference), or any key from the image model catalog. In auto mode the best available model is selected based on task type and configured API keys."),
+    aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4"]).optional().default("1:1").describe("Aspect ratio for supported models"),
+    filename: z.string().optional().describe("Filename for Cloudinary (no extension)."),
+    folder: z.string().optional().describe("Cloudinary folder. Defaults to prausdit-lab/agent-generated."),
+    tags: z.array(z.string()).optional().describe("Cloudinary tags."),
+  }),
+  execute: async ({ prompt, model, filename, folder, tags }) => {
+    const result = await generateImage(prompt, model ?? "auto", { filename, folder, tags })
+    if (!result.success) {
+      return { success: false, error: result.error, tip: "Check image model settings and ensure Cloudinary is configured in Settings → Manage API." }
+    }
+    return {
+      success: true,
+      cloudinaryUrl: result.cloudinaryUrl,
+      publicId: result.publicId,
+      model: result.model,
+      bytes: result.bytes,
+      markdownEmbed: `![${prompt.slice(0, 80)}](${result.cloudinaryUrl})`,
+      message: `Image generated with ${result.model} and uploaded: ${result.cloudinaryUrl}`,
+    }
+  },
+})
+
 export const uploadImage = tool({
   description: "Upload an image URL to Cloudinary CDN (keys read from Settings DB). Returns permanent CDN URL.",
   inputSchema: z.object({ imageUrl: z.string().url(), filename: z.string().optional(), folder: z.string().optional(), tags: z.array(z.string()).optional() }),
   execute: async ({ imageUrl, filename, folder, tags }) => {
-    if (!imageUrl.startsWith("https://")) return { success: false, error: "Only HTTPS URLs allowed" }
     const cloudinaryReady = await isCloudinaryConfigured()
-    if (!cloudinaryReady) return { success: false, error: "Cloudinary not configured. Add Cloudinary keys in Settings → Manage API.", fallback: imageUrl }
-    try {
-      const result = await downloadAndUpload(imageUrl, { filename, folder, tags })
-      if (!result) return { success: false, error: "Upload failed", fallback: imageUrl }
-      return { success: true, cloudinaryUrl: result.url, publicId: result.publicId, width: result.width, height: result.height, bytes: result.bytes, message: `Uploaded: ${result.url}` }
-    } catch (err) { return { success: false, error: String(err), fallback: imageUrl } }
+    if (!cloudinaryReady) {
+      return { success: false, error: "Cloudinary not configured. Go to Settings → Manage API → Cloudinary and add your Cloud Name and Upload Preset.", fallback: imageUrl }
+    }
+    const result = await downloadAndUpload(imageUrl, { filename, folder, tags })
+    if ("error" in result) {
+      return { success: false, error: result.error, fallback: imageUrl }
+    }
+    return { success: true, cloudinaryUrl: result.url, publicId: result.publicId, width: result.width, height: result.height, bytes: result.bytes, message: `Image uploaded successfully: ${result.url}` }
   },
 })
 
@@ -941,6 +1344,7 @@ export const agentTools = {
   update_plan:            updatePlan,
   approve_plan:           approvePlan,
   finalize_execution:     finalizeExecution,
+  generate_image:         generateImageTool,
   upload_image:           uploadImage,
   list_projects:          listProjects,
   switch_project:         switchProject,

@@ -25,6 +25,7 @@ interface AISettingsData {
   hasFirecrawlKey: boolean
   hasCrawl4aiUrl: boolean
   crawl4aiUrl: string | null
+  imageGenerationModel: string
   hasCloudinaryCloudName: boolean
   hasCloudinaryUploadPreset: boolean
   hasCloudinaryApiKey: boolean
@@ -46,6 +47,7 @@ type SectionId =
   | "api-openrouter"
   | "api-search"
   | "api-crawl"
+  | "api-image-gen"
   | "api-cloudinary"
   | "agent-files"
 
@@ -117,6 +119,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "api-openrouter", label: "OpenRouter",        icon: Globe  },
       { id: "api-search",     label: "Search Providers",  icon: Search },
       { id: "api-crawl",      label: "Crawl Providers",   icon: Server },
+      { id: "api-image-gen",  label: "Image Generation",  icon: Zap   },
       { id: "api-cloudinary", label: "Cloudinary CDN",    icon: Image  },
     ],
   },
@@ -362,6 +365,10 @@ export default function SettingsPage() {
   const [firecrawlKey, setFirecrawlKey] = useState(""); const [savingFirecrawl, setSavingFirecrawl] = useState(false); const [testFirecrawl, setTestFirecrawl] = useState<TestStatus>({ type: null, message: "" })
   const [crawl4aiUrl, setCrawl4aiUrl] = useState(""); const [savingCrawl4ai, setSavingCrawl4ai] = useState(false); const [testCrawl4ai, setTestCrawl4ai] = useState<TestStatus>({ type: null, message: "" })
 
+  // Image generation model
+  const [imageGenModel, setImageGenModel] = useState("auto")
+  const [savingImageModel, setSavingImageModel] = useState(false)
+
   // Cloudinary
   const [cloudName, setCloudName] = useState("")
   const [cloudPreset, setCloudPreset] = useState("")
@@ -382,6 +389,7 @@ export default function SettingsPage() {
         setSelectedGeminiModel(data.geminiDefaultModel || "gemini-2.5-flash")
         setSelectedORModels(data.selectedOpenRouterModels || [])
         if (data.crawl4aiUrl) setCrawl4aiUrl(data.crawl4aiUrl)
+        if (data.imageGenerationModel) setImageGenModel(data.imageGenerationModel || "auto")
         if (data.cloudinaryCloudName) setCloudName(data.cloudinaryCloudName)
       }
     } catch { /* ignore */ } finally { setLoadingSettings(false) }
@@ -860,6 +868,99 @@ export default function SettingsPage() {
                         </span>
                       )}
                     </div>
+                  </div>
+                </div>
+              </SectionCard>
+            )}
+
+            {/* ══════════════════════════════════════════════════
+                API — IMAGE GENERATION MODEL
+            ══════════════════════════════════════════════════ */}
+            {activeSection === "api-image-gen" && (
+              <SectionCard title="Image Generation Model" icon={Zap} locked={!canEdit} accent="amber" id="api-image-gen">
+                <p className="text-[12px] text-muted-foreground mb-5">
+                  Select which model the agent uses when generating images for documents, notes, and diagrams.
+                  <span className="text-amber-400 font-medium"> Auto</span> intelligently routes based on task type — diagrams use fast free models, high-quality visuals use pro models.
+                  Requires <span className="text-amber-400 font-medium">Cloudinary</span> to be configured for image storage.
+                </p>
+
+                <div className="space-y-4">
+                  {/* Auto option */}
+                  <div className="space-y-3">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Routing</p>
+                    {[
+                      { id: "auto", label: "Auto (Recommended)", desc: "Intelligently routes: diagrams → Gemini Flash (fast/free), quality images → Nano Banana 2, photorealistic → best available", badge: "Smart", badgeColor: "amber" },
+                    ].map(m => (
+                      <label key={m.id} className={cn("flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all", imageGenModel === m.id ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-muted/20 hover:border-border/80")}>
+                        <input type="radio" name="imageGenModel" value={m.id} checked={imageGenModel === m.id} onChange={() => setImageGenModel(m.id)} className="mt-0.5 accent-amber-500" disabled={!canEdit} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[13px] font-medium text-foreground">{m.label}</span>
+                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full border font-semibold", `text-${m.badgeColor}-400 bg-${m.badgeColor}-500/10 border-${m.badgeColor}-500/20`)}>{m.badge}</span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{m.desc}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* Gemini Direct models */}
+                  <div className="space-y-3">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Gemini Direct (uses Gemini API key)</p>
+                    {[
+                      { id: "gemini-2.0-flash-image", label: "Gemini 2.0 Flash Image", desc: "Fast, free tier available. Best for: technical diagrams, architecture charts, flowcharts", badge: "Free", badgeColor: "emerald" },
+                      { id: "gemini-2.5-flash-image", label: "Gemini 2.5 Flash Image (Nano Banana)", desc: "High-quality illustrations, image editing, multi-image fusion. Great for research visuals", badge: "Paid", badgeColor: "blue" },
+                      { id: "imagen-4", label: "Imagen 4", desc: "Photorealistic, brand assets, people. Highest quality for professional images", badge: "Paid", badgeColor: "purple" },
+                    ].map(m => (
+                      <label key={m.id} className={cn("flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all", imageGenModel === m.id ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-muted/20 hover:border-border/80")}>
+                        <input type="radio" name="imageGenModel" value={m.id} checked={imageGenModel === m.id} onChange={() => setImageGenModel(m.id)} className="mt-0.5 accent-amber-500" disabled={!canEdit} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[13px] font-medium text-foreground">{m.label}</span>
+                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full border font-semibold", `text-${m.badgeColor}-400 bg-${m.badgeColor}-500/10 border-${m.badgeColor}-500/20`)}>{m.badge}</span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{m.desc}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* OpenRouter models */}
+                  <div className="space-y-3">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">OpenRouter (uses OpenRouter API key)</p>
+                    {[
+                      { id: "google/gemini-2.5-flash-image", label: "Gemini 2.5 Flash Image via OpenRouter", desc: "Same as Nano Banana, routed via OpenRouter. Good choice if you use OR as primary provider", badge: "Paid", badgeColor: "blue" },
+                      { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash Image (Nano Banana 2)", desc: "Pro-level quality at Flash speed. Best overall quality/cost ratio for complex visuals", badge: "Paid", badgeColor: "amber" },
+                      { id: "openai/gpt-5-image-mini", label: "GPT-5 Image Mini via OpenRouter", desc: "Excellent text-in-image rendering, detailed edits, instruction following", badge: "Paid", badgeColor: "purple" },
+                      { id: "bytedance/seedream-4.5", label: "Seedream 4.5 via OpenRouter", desc: "Best portrait refinement, editing consistency. $0.04/image", badge: "$0.04", badgeColor: "zinc" },
+                      { id: "sourceful/riverflow-v2-fast", label: "Riverflow V2 Fast via OpenRouter", desc: "Fastest generation, best for production/high-volume. $0.02/1K images", badge: "Fastest", badgeColor: "emerald" },
+                    ].map(m => (
+                      <label key={m.id} className={cn("flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all", imageGenModel === m.id ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-muted/20 hover:border-border/80")}>
+                        <input type="radio" name="imageGenModel" value={m.id} checked={imageGenModel === m.id} onChange={() => setImageGenModel(m.id)} className="mt-0.5 accent-amber-500" disabled={!canEdit} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[13px] font-medium text-foreground">{m.label}</span>
+                            <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full border font-semibold", `text-${m.badgeColor}-400 bg-${m.badgeColor}-500/10 border-${m.badgeColor}-500/20`)}>{m.badge}</span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{m.desc}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* Save button */}
+                  <div className="pt-2">
+                    <button
+                      onClick={async () => { setSavingImageModel(true); try { await saveKey({ imageGenerationModel: imageGenModel }) } finally { setSavingImageModel(false) } }}
+                      disabled={!canEdit || savingImageModel}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-500 text-black text-[13px] font-medium hover:bg-amber-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {savingImageModel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Key className="w-3.5 h-3.5" />}
+                      Save Image Model
+                    </button>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Selected: <span className="text-amber-400 font-medium">{imageGenModel}</span>
+                    </p>
                   </div>
                 </div>
               </SectionCard>
