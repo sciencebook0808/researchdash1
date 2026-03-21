@@ -3,10 +3,11 @@
  *
  * Shared auth helpers for API routes.
  *
- * CHANGES:
- *   - Added requireReadAuth() for GET-only endpoints (SSE stream, etc.)
- *     Requires a valid Clerk session but any role can read.
- *   - All existing exports preserved unchanged.
+ * FIXED: AuthSuccess now includes { email, clerkId, name, role } so that
+ * existing routes like agent/files/route.ts and agent/files/history/route.ts
+ * can access authResult.email without TypeScript errors.
+ *
+ * ADDED: requireReadAuth() for GET-only endpoints (SSE stream, etc.)
  */
 
 import { auth, currentUser } from "@clerk/nextjs/server"
@@ -22,11 +23,19 @@ export type EffectiveUser = {
   role:    "super_admin" | "admin" | "developer" | "user"
 }
 
-type AuthSuccess = { ok: true }
-type AuthFailure = { ok: false; response: NextResponse }
-type AuthResult  = AuthSuccess | AuthFailure
+/** Success result includes user info so routes can access authResult.email etc. */
+type AuthSuccess = {
+  ok:      true
+  clerkId: string
+  email:   string
+  name:    string | null
+  role:    "super_admin" | "admin" | "developer" | "user"
+}
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+type AuthFailure = { ok: false; response: NextResponse }
+export type AuthResult = AuthSuccess | AuthFailure
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export function getSuperAdminEmail(): string | null {
   return process.env.SUPER_ADMIN_EMAIL || null
@@ -51,7 +60,7 @@ export async function getEffectiveUser(): Promise<EffectiveUser | null> {
     const clerkUser = await currentUser()
     if (!clerkUser) return null
 
-    const email = clerkUser.emailAddresses[0]?.emailAddress || ""
+    const email      = clerkUser.emailAddresses[0]?.emailAddress || ""
     const superEmail = getSuperAdminEmail()
 
     return {
@@ -67,6 +76,7 @@ export async function getEffectiveUser(): Promise<EffectiveUser | null> {
 
 // ─── requireWriteAuth ─────────────────────────────────────────────────────────
 // For mutation endpoints: requires super_admin, admin, or developer role.
+// Returns user info in the success case so routes can use authResult.email etc.
 
 const WRITE_ROLES = new Set(["super_admin", "admin", "developer"])
 
@@ -91,7 +101,13 @@ export async function requireWriteAuth(): Promise<AuthResult> {
       }
     }
 
-    return { ok: true }
+    return {
+      ok:      true,
+      clerkId: user.clerkId,
+      email:   user.email,
+      name:    user.name,
+      role:    user.role,
+    }
   } catch {
     return {
       ok:       false,
@@ -103,7 +119,6 @@ export async function requireWriteAuth(): Promise<AuthResult> {
 // ─── requireReadAuth ──────────────────────────────────────────────────────────
 // For read-only endpoints (SSE reconnect, job status, etc.):
 // Any authenticated session is allowed — role check is relaxed.
-// This lets the SSE stream endpoint work for all logged-in users.
 
 export async function requireReadAuth(): Promise<AuthResult> {
   try {
@@ -114,7 +129,16 @@ export async function requireReadAuth(): Promise<AuthResult> {
         response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
       }
     }
-    return { ok: true }
+
+    // Best-effort user info — fall back to empty strings if DB unavailable
+    const user = await getEffectiveUser()
+    return {
+      ok:      true,
+      clerkId: user?.clerkId ?? userId,
+      email:   user?.email   ?? "",
+      name:    user?.name    ?? null,
+      role:    user?.role    ?? "user",
+    }
   } catch {
     return {
       ok:       false,
@@ -149,7 +173,13 @@ export async function requireAdminAuth(): Promise<AuthResult> {
       }
     }
 
-    return { ok: true }
+    return {
+      ok:      true,
+      clerkId: user.clerkId,
+      email:   user.email,
+      name:    user.name,
+      role:    user.role,
+    }
   } catch {
     return {
       ok:       false,
