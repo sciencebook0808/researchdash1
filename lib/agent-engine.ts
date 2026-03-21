@@ -11,7 +11,7 @@
  *   - Attachment content is injected into the user message before streaming.
  */
 
-import { streamText, stepCountIs, type CoreMessage, type CoreUserMessage, type CoreAssistantMessage } from "ai"
+import { streamText, stepCountIs, type ModelMessage, type UserModelMessage, type AssistantModelMessage } from "ai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createOpenAI } from "@ai-sdk/openai"
 import { prisma } from "./prisma"
@@ -488,39 +488,41 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
     }
   }
 
-  // Build properly-typed AI SDK v6 CoreMessage array.
+  // Build properly-typed AI SDK v6 ModelMessage array.
   // History messages are always string content (assistant messages from DB).
   // The final user message may include multimodal file parts for Gemini.
   const attachmentContext = buildAttachmentContext(attachments)
   const mainText = attachmentContext ? `${message}\n${attachmentContext}` : message
 
-  // Build user message — may include image/file parts for multimodal models
-  function buildCurrentUserMessage(text: string, atts: AgentAttachment[]): CoreUserMessage {
+  // Build user message — may include image/file parts for multimodal models.
+  // API ref: https://ai-sdk.dev/docs/reference/ai-sdk-core/model-message
+  // ImagePart field: `image: URL`, `mediaType?: string`
+  // FilePart  field: `data: URL`,  `mimeType: string`
+  function buildCurrentUserMessage(text: string, atts: AgentAttachment[]): UserModelMessage {
     const multimodalAtts = atts.filter(
       a => !!a.url && (a.mimeType.startsWith("image/") || a.mimeType === "application/pdf")
     )
 
     if (!multimodalAtts.length) {
-      // Simple text message — no file parts needed
+      // Simple text message — no multimodal parts needed
       return { role: "user", content: text }
     }
 
-    // Build content array with text + file/image parts
-    type UserPart =
-      | { type: "text";  text: string }
-      | { type: "image"; image: URL; mimeType?: string }
-      | { type: "file";  data: URL;  mimeType: string }
+    // Build content array: TextPart + ImagePart / FilePart
+    // Types match AI SDK v6.0.x ModelMessage specification exactly
+    type TextPart  = { type: "text";  text: string }
+    type ImagePart = { type: "image"; image: URL; mediaType?: string }  // note: mediaType (not mimeType)
+    type FilePart  = { type: "file";  data:  URL; mimeType: string }    // note: mimeType
 
-    const parts: UserPart[] = [{ type: "text", text }]
+    const parts: Array<TextPart | ImagePart | FilePart> = [{ type: "text", text }]
 
     for (const a of multimodalAtts) {
       const url = new URL(a.url as string)
       if (a.mimeType.startsWith("image/")) {
-        // Image part: Gemini reads directly from Cloudinary URL
-        parts.push({ type: "image", image: url, mimeType: a.mimeType })
+        // ImagePart: Gemini reads image directly from Cloudinary URL
+        parts.push({ type: "image", image: url, mediaType: a.mimeType })
       } else {
-        // PDF part: Gemini natively reads PDFs via the file part API
-        // Files are uploaded as Cloudinary `image` resource type for reliable URL access
+        // FilePart: Gemini reads PDF natively — uploaded via Cloudinary image endpoint
         parts.push({ type: "file", data: url, mimeType: "application/pdf" })
       }
     }
@@ -528,18 +530,18 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
     return { role: "user", content: parts }
   }
 
-  // Build history as properly typed CoreMessage array
-  // History from DB always has string content (no multimodal needed for past messages)
-  const historyMessages: CoreMessage[] = history.slice(-20).map(m => {
+  // Build history as properly discriminated ModelMessage array.
+  // History from DB always has string content (no multimodal parts for past turns).
+  const historyMessages: ModelMessage[] = history.slice(-20).map(m => {
     if (m.role === "assistant") {
-      const msg: CoreAssistantMessage = { role: "assistant", content: m.content }
+      const msg: AssistantModelMessage = { role: "assistant", content: m.content }
       return msg
     }
-    const msg: CoreUserMessage = { role: "user", content: m.content }
+    const msg: UserModelMessage = { role: "user", content: m.content }
     return msg
   })
 
-  const messages: CoreMessage[] = [
+  const messages: ModelMessage[] = [
     ...historyMessages,
     buildCurrentUserMessage(mainText, attachments),
   ]
