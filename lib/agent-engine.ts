@@ -488,15 +488,51 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
     }
   }
 
-  // Inject attachment context into the user message
+  // Build user message content using AI SDK multimodal parts.
+  // For images and PDFs, we pass the Cloudinary URL as a native file/image part.
+  // Gemini reads these directly via its multimodal API (no URL authentication needed).
+  // For text-extracted files (DOCX/CSV), the content is already in attachmentContext.
   const attachmentContext = buildAttachmentContext(attachments)
-  const fullMessage = attachmentContext
-    ? `${message}\n${attachmentContext}`
-    : message
+  const mainText = attachmentContext ? `${message}\n${attachmentContext}` : message
 
-  const messages: Array<{ role: "user" | "assistant"; content: string }> = [
-    ...history.slice(-20),
-    { role: "user", content: fullMessage },
+  type ContentPart =
+    | { type: "text";  text: string }
+    | { type: "image"; image: URL; mimeType?: string }
+    | { type: "file";  data: URL;  mimeType: string }
+
+  function buildUserContent(
+    text: string,
+    atts: AgentAttachment[]
+  ): string | ContentPart[] {
+    const multimodalAtts = atts.filter(a => {
+      if (!a.url) return false
+      const isImg = a.mimeType.startsWith("image/")
+      const isPdf = a.mimeType === "application/pdf"
+      return isImg || isPdf
+    })
+    if (!multimodalAtts.length) return text
+
+    const parts: ContentPart[] = [{ type: "text", text }]
+    for (const a of multimodalAtts) {
+      const url = new URL(a.url!)
+      if (a.mimeType.startsWith("image/")) {
+        parts.push({ type: "image", image: url, mimeType: a.mimeType })
+      } else {
+        // PDF via Cloudinary image endpoint — Gemini reads PDF files natively
+        parts.push({ type: "file", data: url, mimeType: "application/pdf" })
+      }
+    }
+    return parts
+  }
+
+  const userContent = buildUserContent(mainText, attachments)
+
+  const messages: Array<{ role: "user" | "assistant"; content: string | ContentPart[] }> = [
+    ...history.slice(-20).map(m => ({
+      role: m.role,
+      content: m.content as string | ContentPart[],
+    })),
+    { role: "user", content: userContent },
   ]
 
   return new ReadableStream<Uint8Array>({

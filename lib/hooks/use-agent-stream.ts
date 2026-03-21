@@ -4,7 +4,7 @@
  * Custom React hook that encapsulates the full agent streaming lifecycle:
  *   - Sends POST /api/agent and streams SSE events live
  *   - Captures the X-Job-Id from the response header
- *   - Persists job ID to sessionStorage keyed by sessionId
+ *   - Persists job ID to localStorage keyed by sessionId (survives browser close/reopen)
  *   - On mount, checks if there is a stored running job → reconnects via SSE
  *   - Falls back to polling if SSE reconnect fails
  *   - Exposes clean callbacks: onText, onToolCall, onToolResult, onDone, onError
@@ -29,14 +29,14 @@ interface StoredJob {
   savedAt:  number
 }
 
-function loadStoredJob(sessionId: string): StoredJob | null {
+export function loadStoredJob(sessionId: string): StoredJob | null {
   try {
-    const raw = sessionStorage.getItem(jobStorageKey(sessionId))
+    const raw = localStorage.getItem(jobStorageKey(sessionId))
     if (!raw) return null
     const parsed = JSON.parse(raw) as StoredJob
-    // Discard jobs older than 10 minutes
-    if (Date.now() - parsed.savedAt > 10 * 60 * 1000) {
-      sessionStorage.removeItem(jobStorageKey(sessionId))
+    // Discard jobs older than 30 minutes (matches Vercel maxDuration buffer)
+    if (Date.now() - parsed.savedAt > 30 * 60 * 1000) {
+      localStorage.removeItem(jobStorageKey(sessionId))
       return null
     }
     return parsed
@@ -45,16 +45,16 @@ function loadStoredJob(sessionId: string): StoredJob | null {
   }
 }
 
-function saveStoredJob(sessionId: string, jobId: string, lastSeq = 0): void {
+export function saveStoredJob(sessionId: string, jobId: string, lastSeq = 0): void {
   try {
     const data: StoredJob = { jobId, lastSeq, savedAt: Date.now() }
-    sessionStorage.setItem(jobStorageKey(sessionId), JSON.stringify(data))
-  } catch { /* sessionStorage unavailable (incognito etc.) */ }
+    localStorage.setItem(jobStorageKey(sessionId), JSON.stringify(data))
+  } catch { /* localStorage unavailable (incognito/SSR) */ }
 }
 
-function clearStoredJob(sessionId: string): void {
+export function clearStoredJob(sessionId: string): void {
   try {
-    sessionStorage.removeItem(jobStorageKey(sessionId))
+    localStorage.removeItem(jobStorageKey(sessionId))
   } catch { /* ignore */ }
 }
 

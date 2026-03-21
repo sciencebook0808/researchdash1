@@ -998,10 +998,27 @@ export default function FullscreenChatPage() {
       }))
       setMessages(msgs)
 
-      // After loading messages, check if there is a stored running job
+      // Check localStorage first (fast path — same browser session or recent revisit)
       const stored = checkStoredJob(sessionId)
       if (stored) {
         await attemptReconnect(sessionId)
+        return
+      }
+
+      // Fallback: check DB for any RUNNING job for this session.
+      // This handles the "user closed and reopened the browser" case where
+      // localStorage was cleared but the Vercel serverless function may still be running.
+      try {
+        const jobRes  = await fetch(`/api/agent/active-job?sessionId=${sessionId}`)
+        const jobData = jobRes.ok ? await jobRes.json() : null
+        if (jobData?.job?.id) {
+          // Found a live job in DB — save to localStorage and reconnect
+          const { saveStoredJob: saveJob } = await import("@/lib/hooks/use-agent-stream")
+          saveJob(sessionId, jobData.job.id)
+          await attemptReconnect(sessionId)
+        }
+      } catch {
+        // DB check failed — not critical, continue without reconnect
       }
     } catch { setMessages([]) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
