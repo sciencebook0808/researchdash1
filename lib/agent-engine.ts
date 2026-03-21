@@ -1,18 +1,21 @@
 /**
+ * lib/agent-engine.ts
+ *
  * Prausdit Research Lab — Agent Engine
  *
- * UPGRADED (Project Context Awareness):
- *   - AgentOptions now accepts currentProjectId
- *   - System prompt automatically includes current project context
- *   - Uses buildProjectScopedTools() so all tools auto-inject projectId
- *   - list_projects / switch_project added to TOOL_LABELS
+ * CHANGES in this version:
+ *   - AgentOptions now accepts `onCheckpoint` callback for background-job
+ *     checkpointing. Every SSE event is forwarded to this callback so the
+ *     caller can persist them to the DB without modifying stream logic.
+ *   - AgentOptions now accepts `attachments` for file uploads.
+ *   - Attachment content is injected into the user message before streaming.
  */
 
 import { streamText, stepCountIs } from "ai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createOpenAI } from "@ai-sdk/openai"
 import { prisma } from "./prisma"
-import { agentTools, buildProjectScopedTools } from "./agent-tools"
+import { buildProjectScopedTools } from "./agent-tools"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,37 +24,59 @@ export interface AgentMessage {
   content: string
 }
 
+/** A file attachment passed along with the user's message */
+export interface AgentAttachment {
+  name:     string
+  mimeType: string
+  url:      string
+  /** Extracted text for DOCX/CSV; null for images/PDFs (model reads URL) */
+  content:  string | null
+}
+
+/** Payload of a single checkpoint event (mirrors the SSE wire format) */
+export interface AgentEvent {
+  type:         string
+  text?:        string
+  tool?:        string
+  args?:        Record<string, unknown>
+  result?:      unknown
+  step?:        number
+  projectId?:   string
+  projectName?: string
+}
+
 export interface AgentOptions {
-  message: string
-  history: AgentMessage[]
-  provider: "gemini" | "openrouter"
-  model: string
-  systemContext?: string
-  /** The currently selected project ID from the user's session */
+  message:          string
+  history:          AgentMessage[]
+  provider:         "gemini" | "openrouter"
+  model:            string
+  systemContext?:   string
   currentProjectId?: string | null
+  sessionMemory?:   string | null
+  /** File attachments to include with the user message */
+  attachments?:     AgentAttachment[]
   /**
-   * Fix 3 — Session memory summary.
-   * A compact digest of entities created/found in this session,
-   * derived from agentSteps on the client and injected into the system prompt.
-   * Gives the agent persistent awareness of what it has already done.
+   * Optional callback invoked for every SSE event before it is enqueued.
+   * Used by the background-job system to checkpoint events to the DB.
+   * May be async — the engine awaits it before proceeding.
    */
-  sessionMemory?: string | null
+  onCheckpoint?:    (event: AgentEvent) => Promise<void> | void
 }
 
 // ─── Active Agent File Loader ─────────────────────────────────────────────────
 
 interface AgentFileSection {
-  system:  string[]
-  rules:   string[]
-  tools:   string[]
+  system: string[]
+  rules:  string[]
+  tools:  string[]
 }
 
 async function loadActiveAgentFiles(): Promise<AgentFileSection> {
   const sections: AgentFileSection = { system: [], rules: [], tools: [] }
   try {
     const files = await prisma.agentFile.findMany({
-      where: { isActive: true },
-      select: { name: true, type: true, content: true },
+      where:   { isActive: true },
+      select:  { name: true, type: true, content: true },
       orderBy: { createdAt: "asc" },
     })
     for (const file of files) {
@@ -166,11 +191,25 @@ When user says "list projects" → call \`list_projects\`
 When user says "switch to project X" → call \`switch_project\` with the project name/ID
 When user says "select project X" → call \`switch_project\`
 
+### Rule 9 — FILE ATTACHMENTS
+When the user provides an attached file, it will appear in their message as a special block:
+\`\`\`
+[ATTACHED FILE: filename.ext (type)]
+URL: https://...
+Content: ...extracted text or "View at URL"...
+\`\`\`
+
+- For PDF files: read and analyse the content at the URL directly
+- For DOCX/text files: the extracted text is provided inline — analyse it directly
+- For CSV files: the data is provided as JSON — treat it as a structured dataset
+- For images: use the URL for visual analysis if your model supports it
+- Always acknowledge attached files and incorporate them into your response
+
 ---
 
 ## Tool Capabilities
 
-### Project Management (NEW)
+### Project Management
 - \`list_projects\`  — List all projects with resource counts
 - \`switch_project\` — Switch to a different project by name or ID
 
@@ -178,14 +217,14 @@ When user says "select project X" → call \`switch_project\`
 - \`research\` — Unified deep research. Primary research tool.
 
 ### Planning
-- \`generate_plan\`     — Create structured plan. Must show before executing.
-- \`update_plan\`       — Refine plan after feedback
-- \`approve_plan\`      — Record user approval
-- \`finalize_execution\` — Record completion + Cloudinary uploads
+- \`generate_plan\`      — Create structured plan. Must show before executing.
+- \`update_plan\`        — Refine plan after feedback
+- \`approve_plan\`       — Record user approval
+- \`finalize_execution\`  — Record completion + Cloudinary uploads
 
 ### Images
-- \`generate_image\` — **Generate** an image using Gemini multimodal models (auto/gemini-image/imagen-4) and upload to Cloudinary in one step. Returns a permanent CDN URL + markdown embed string. Use automatically when docs/notes/reports benefit from visuals.
-- \`upload_image\` — Upload an **existing HTTPS image URL** to Cloudinary CDN → permanent URL. Use when you already have an image URL (from web research etc.).
+- \`generate_image\` — Generate an image using Gemini multimodal models
+- \`upload_image\`   — Upload an existing HTTPS image URL to Cloudinary CDN
 
 ### Knowledge & RAG
 - \`search_internal_docs\` — Full-text search (project-scoped automatically)
@@ -215,7 +254,7 @@ When user says "select project X" → call \`switch_project\`
 - \`analyze_dataset\` — Full analysis + experiment suggestions
 
 ### Model Benchmarking
-- \`benchmark_model\`      — Record scores + generate report
+- \`benchmark_model\`       — Record scores + generate report
 - \`get_model_leaderboard\` — Ranked model comparison
 
 ### Web Research
@@ -254,16 +293,12 @@ async function buildSystemPrompt(
   const files = await loadActiveAgentFiles()
   const parts: string[] = []
 
-  // 1. Base system prompt or custom system files
   if (files.system.length > 0) {
     parts.push(files.system.join("\n\n"))
   } else {
     parts.push(BASE_SYSTEM_PROMPT)
   }
 
-  // 2. ── PROJECT CONTEXT INJECTION (CRITICAL) ──────────────────────────────
-  // This is the key fix: inject the current project ID prominently in the
-  // system prompt so the agent always knows which project is active.
   if (currentProjectId) {
     try {
       const project = await prisma.project.findUnique({
@@ -271,56 +306,27 @@ async function buildSystemPrompt(
         select: { id: true, name: true, type: true, description: true, _count: { select: { datasets: true, experiments: true, documentation: true, roadmapSteps: true, notes: true } } },
       })
       if (project) {
-        parts.push(`---\n## CURRENT PROJECT CONTEXT
-
-> **IMPORTANT**: You are currently operating in project **"${project.name}"**.
-> ALL create/search/roadmap/experiment/dataset/note operations are automatically scoped to this project.
-> You do NOT need to specify projectId in tool calls — it is injected automatically.
-
-- **Project Name**: ${project.name}
-- **Project ID**: \`${project.id}\`
-- **Project Type**: ${project.type}
-- **Description**: ${project.description || "No description"}
-- **Resources**:
-  - Datasets: ${project._count.datasets}
-  - Experiments: ${project._count.experiments}
-  - Documents: ${project._count.documentation}
-  - Roadmap Steps: ${project._count.roadmapSteps}
-  - Notes: ${project._count.notes}
-
-When the user creates anything, it will be linked to **${project.name}** automatically.
-When searching, results will be filtered to **${project.name}** first.
-
-If the user wants to switch projects, call the \`switch_project\` tool.`)
+        parts.push(`---\n## CURRENT PROJECT CONTEXT\n\n> **IMPORTANT**: You are currently operating in project **"${project.name}"**.\n> ALL create/search/roadmap/experiment/dataset/note operations are automatically scoped to this project.\n> You do NOT need to specify projectId in tool calls — it is injected automatically.\n\n- **Project Name**: ${project.name}\n- **Project ID**: \`${project.id}\`\n- **Project Type**: ${project.type}\n- **Description**: ${project.description || "No description"}\n- **Resources**:\n  - Datasets: ${project._count.datasets}\n  - Experiments: ${project._count.experiments}\n  - Documents: ${project._count.documentation}\n  - Roadmap Steps: ${project._count.roadmapSteps}\n  - Notes: ${project._count.notes}\n\nWhen the user creates anything, it will be linked to **${project.name}** automatically.\nWhen searching, results will be filtered to **${project.name}** first.\n\nIf the user wants to switch projects, call the \`switch_project\` tool.`)
       }
     } catch {
-      // DB unavailable — include basic context without DB lookup
       parts.push(`---\n## CURRENT PROJECT CONTEXT\n\n> **Active Project ID**: \`${currentProjectId}\`\n> All operations are scoped to this project automatically.`)
     }
   } else {
-    parts.push(`---\n## PROJECT CONTEXT\n\n> **No project selected.** Operations will NOT be scoped to any project (global scope).
-> To select a project, call \`list_projects\` to see available projects, then \`switch_project\`.
-> Or the user can type # in the chat to select a project from the dropdown.`)
+    parts.push(`---\n## PROJECT CONTEXT\n\n> **No project selected.** Operations will NOT be scoped to any project (global scope).\n> To select a project, call \`list_projects\` to see available projects, then \`switch_project\`.\n> Or the user can type # in the chat to select a project from the dropdown.`)
   }
 
-  // 3. Active rules files
   if (files.rules.length > 0) {
     parts.push("---\n## Active Rules\n\n" + files.rules.join("\n\n---\n\n"))
   }
 
-  // 4. Active tools files
   if (files.tools.length > 0) {
     parts.push("---\n## Tool Configurations\n\n" + files.tools.join("\n\n---\n\n"))
   }
 
-  // 5. Workflow-specific context
   if (extraContext) {
     parts.push("---\n## Active Workflow Context\n\n" + extraContext)
   }
 
-  // 6. Fix 3 — Session memory: compact digest of what was created/found
-  //    in this session. Derived from agentSteps on client, prevents the
-  //    agent from forgetting entities it already created earlier in the chat.
   if (sessionMemory) {
     parts.push(`---
 ## Session Memory (This Conversation)
@@ -387,7 +393,6 @@ const TOOL_LABELS: Record<string, string> = {
   finalize_execution:       "Finalizing execution & saving report",
   generate_image:           "Generating image with Gemini",
   upload_image:             "Uploading image to Cloudinary",
-  // NEW: Project management
   list_projects:            "Listing all projects",
   switch_project:           "Switching active project",
 }
@@ -417,33 +422,87 @@ function detectWorkflowIntent(message: string): string {
   return "Agent thinking..."
 }
 
+// ─── Attachment Context Builder ───────────────────────────────────────────────
+
+function buildAttachmentContext(attachments: AgentAttachment[]): string {
+  if (!attachments.length) return ""
+
+  const blocks = attachments.map(a => {
+    const isImage = a.mimeType.startsWith("image/")
+    const isPdf   = a.mimeType === "application/pdf"
+    const isCsv   = a.mimeType === "text/csv" || a.name.endsWith(".csv")
+
+    const contentBlock = a.content
+      ? `Content:\n${a.content.slice(0, 8000)}${a.content.length > 8000 ? "\n...[truncated]" : ""}`
+      : isImage
+        ? `This is an image. View/analyse at the URL above.`
+        : isPdf
+          ? `This is a PDF document. View/analyse at the URL above.`
+          : `No text content extracted.`
+
+    const typeLabel = isImage ? "IMAGE" : isPdf ? "PDF" : isCsv ? "CSV DATA" : "DOCUMENT"
+
+    return `[ATTACHED FILE: ${a.name} (${typeLabel})]
+URL: ${a.url}
+MIME: ${a.mimeType}
+${contentBlock}`
+  })
+
+  return `\n\n---\n## Attached Files\n\nThe user has attached the following file(s) to this message:\n\n${blocks.join("\n\n---\n\n")}\n\n---`
+}
+
 // ─── Main Agent Runner ────────────────────────────────────────────────────────
 
 export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
-  const { message, history, provider, model, systemContext, currentProjectId, sessionMemory } = options
+  const {
+    message,
+    history,
+    provider,
+    model,
+    systemContext,
+    currentProjectId,
+    sessionMemory,
+    attachments = [],
+    onCheckpoint,
+  } = options
+
   const encoder = new TextEncoder()
 
-  function evt(payload: object): Uint8Array {
+  function evt(payload: AgentEvent): Uint8Array {
     return encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
   }
 
+  async function checkpoint(payload: AgentEvent): Promise<void> {
+    if (onCheckpoint) {
+      try {
+        await onCheckpoint(payload)
+      } catch {
+        // Never let checkpoint failure kill the stream
+      }
+    }
+  }
+
+  // Inject attachment context into the user message
+  const attachmentContext = buildAttachmentContext(attachments)
+  const fullMessage = attachmentContext
+    ? `${message}\n${attachmentContext}`
+    : message
+
   const messages: Array<{ role: "user" | "assistant"; content: string }> = [
-    ...history.slice(-20),  // Fix 1: matches client history window
-    { role: "user", content: message },
+    ...history.slice(-20),
+    { role: "user", content: fullMessage },
   ]
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
         const initialStatus = detectWorkflowIntent(message)
-        controller.enqueue(evt({ type: "status", text: initialStatus, step: 0 }))
+        const initEvent: AgentEvent = { type: "status", text: initialStatus, step: 0 }
+        controller.enqueue(evt(initEvent))
+        await checkpoint(initEvent)
 
-        // Build system prompt — injects current project context
         const systemPrompt = await buildSystemPrompt(currentProjectId, systemContext, sessionMemory)
-
-        // Use project-scoped tools so projectId is auto-injected
         const tools = buildProjectScopedTools(currentProjectId)
-
         const aiModel = await getModel(provider, model)
         let stepNum = 0
 
@@ -452,15 +511,8 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
           system: systemPrompt,
           messages,
           tools,
-          // Allow up to 50 tool-call rounds so complex plans (10+ steps) run to completion.
-          // stepCountIs counts each LLM call (text generation OR tool call) as one step,
-          // so 50 gives ~25 actual tool executions without hitting the limit prematurely.
-          // stopWhen: stepCountIs(N) is the correct AI SDK v6 API for multi-step execution.
-          // Each LLM call (text or tool) counts as one step; 50 gives ~25 real tool calls.
           stopWhen: stepCountIs(50),
-          // Retry transient errors so one bad tool call doesn't kill the whole run
           maxRetries: 2,
-          // Lower temperature reduces hallucinated "I'm done" responses mid-execution
           temperature: 0.4,
         })
 
@@ -469,42 +521,76 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
             if (chunk.type === "tool-call") {
               stepNum++
               const label = TOOL_LABELS[chunk.toolName] || `Calling ${chunk.toolName}`
-              controller.enqueue(evt({ type: "tool_call", tool: chunk.toolName, text: label, args: chunk.input, step: stepNum }))
+              const toolCallEvent: AgentEvent = {
+                type: "tool_call",
+                tool: chunk.toolName,
+                text: label,
+                args: chunk.input as Record<string, unknown>,
+                step: stepNum,
+              }
+              controller.enqueue(evt(toolCallEvent))
+              await checkpoint(toolCallEvent)
             }
+
             if (chunk.type === "tool-result") {
               const resultPreview = typeof chunk.output === "object"
                 ? JSON.stringify(chunk.output).slice(0, 200)
                 : String(chunk.output ?? "").slice(0, 200)
 
-              // Check for switch_project action — emit special event for UI
+              // Check for switch_project action
               if (chunk.toolName === "switch_project" && typeof chunk.output === "object") {
                 const output = chunk.output as Record<string, unknown>
                 if (output.__action === "SWITCH_PROJECT" && output.__projectId) {
-                  controller.enqueue(evt({
-                    type: "project_switch",
-                    projectId: output.__projectId,
-                    projectName: output.__projectName,
-                    text: `Switched to project: ${output.__projectName}`,
-                  }))
+                  const switchEvent: AgentEvent = {
+                    type:        "project_switch",
+                    projectId:   output.__projectId as string,
+                    projectName: output.__projectName as string,
+                    text:        `Switched to project: ${output.__projectName}`,
+                  }
+                  controller.enqueue(evt(switchEvent))
+                  await checkpoint(switchEvent)
                 }
               }
 
-              controller.enqueue(evt({ type: "tool_result", tool: chunk.toolName, text: `${TOOL_LABELS[chunk.toolName] || chunk.toolName} complete`, result: chunk.output, resultPreview, step: stepNum }))
-              controller.enqueue(evt({ type: "status", text: "Analysing results...", step: stepNum }))
+              const toolResultEvent: AgentEvent = {
+                type:   "tool_result",
+                tool:   chunk.toolName,
+                text:   `${TOOL_LABELS[chunk.toolName] || chunk.toolName} complete`,
+                result: chunk.output,
+                step:   stepNum,
+              }
+              // Attach resultPreview for UI display (not part of AgentEvent type, but safe to extend)
+              ;(toolResultEvent as Record<string, unknown>)["resultPreview"] = resultPreview
+
+              controller.enqueue(evt(toolResultEvent))
+              await checkpoint(toolResultEvent)
+
+              const analysingEvent: AgentEvent = { type: "status", text: "Analysing results...", step: stepNum }
+              controller.enqueue(evt(analysingEvent))
+              await checkpoint(analysingEvent)
             }
+
             if (chunk.type === "text-delta" && chunk.text) {
-              controller.enqueue(evt({ type: "text", text: chunk.text }))
+              const textEvent: AgentEvent = { type: "text", text: chunk.text }
+              controller.enqueue(evt(textEvent))
+              await checkpoint(textEvent)
             }
           } catch { /* ignore serialization errors */ }
         }
 
-        controller.enqueue(evt({ type: "done" }))
+        const doneEvent: AgentEvent = { type: "done" }
+        controller.enqueue(evt(doneEvent))
+        await checkpoint(doneEvent)
         controller.close()
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         try {
-          controller.enqueue(evt({ type: "error", text: msg }))
-          controller.enqueue(evt({ type: "done" }))
+          const errorEvent: AgentEvent = { type: "error", text: msg }
+          controller.enqueue(evt(errorEvent))
+          await checkpoint(errorEvent)
+          const doneEvent: AgentEvent = { type: "done" }
+          controller.enqueue(evt(doneEvent))
+          await checkpoint(doneEvent)
           controller.close()
         } catch { /* controller already closed */ }
       }

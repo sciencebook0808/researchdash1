@@ -1,20 +1,8 @@
 /**
  * types/chat.ts — Shared chat system types, models, and constants.
  *
- * ─── WHY THIS FILE EXISTS ────────────────────────────────────────────────────
- * Previously every type/constant below was declared as a private file-scoped
- * symbol inside components/chatbot/chatbot-widget.tsx. When
- * app/(dashboard)/chat/page.tsx (the fullscreen chat) was added it needed the
- * same types — but couldn't import them because they weren't exported.
- *
- * This caused the build-blocking TypeScript error:
- *   "Cannot find name 'AgentStep'"  (and 9 siblings)
- *
- * Fix: everything shared lives here. Both files import from "@/types/chat".
- *
- * ─── IMPORT PATTERN ──────────────────────────────────────────────────────────
- *   import type { ChatModel, ChatSession, Message, RoutingMode } from "@/types/chat"
- *   import { GEMINI_MODELS, AUTO_ROUTING_MODELS, SLASH_COMMANDS }  from "@/types/chat"
+ * UPDATED: Added AttachedFile interface and file-upload related types.
+ * These are used by the chat page and upload components.
  */
 
 // ─── Re-export AgentStep from the canonical location ─────────────────────────
@@ -33,28 +21,62 @@ export type AgentEventType =
   | "project_switch"
 
 export interface AgentEvent {
-  type:         AgentEventType
-  text?:        string
-  tool?:        string
-  args?:        Record<string, unknown>
-  result?:      unknown
-  step?:        number
-  projectId?:   string
-  projectName?: string
+  type:           AgentEventType
+  text?:          string
+  tool?:          string
+  args?:          Record<string, unknown>
+  result?:        unknown
+  resultPreview?: string
+  step?:          number
+  projectId?:     string
+  projectName?:   string
+}
+
+// ─── File attachment ──────────────────────────────────────────────────────────
+
+/** A file the user has selected/uploaded to attach to a message */
+export interface AttachedFile {
+  /** DB id (from ChatAttachment), or a local temp id while uploading */
+  id:       string
+  name:     string
+  mimeType: string
+  size:     number
+  /** Cloudinary CDN URL — null while uploading */
+  url:      string | null
+  /** Extracted text content — null for images/PDFs */
+  content:  string | null
+  /** Upload state */
+  status:   "uploading" | "ready" | "error"
+  /** Error message if status=error */
+  error?:   string
+}
+
+/** Minimal attachment passed to the agent engine */
+export interface MessageAttachment {
+  id:       string
+  name:     string
+  mimeType: string
+  size:     number
+  url:      string
+  content:  string | null
 }
 
 // ─── Chat message ─────────────────────────────────────────────────────────────
 
 export interface Message {
-  id:                string
-  role:              "user" | "assistant"
-  content:           string
-  loading?:          boolean
-  agentSteps?:       AgentStep[]
-  stepsExpanded?:    boolean
-  reasoning?:        string
+  id:                 string
+  role:               "user" | "assistant"
+  content:            string
+  loading?:           boolean
+  agentSteps?:        AgentStep[]
+  stepsExpanded?:     boolean
+  reasoning?:         string
   reasoningExpanded?: boolean
-  modelId?:          string
+  modelId?:           string
+  /** Files attached to this message */
+  attachments?:       MessageAttachment[]
+  /** Background job ID for reconnection */
+  jobId?:             string
 }
 
 // ─── Model ────────────────────────────────────────────────────────────────────
@@ -66,6 +88,8 @@ export interface ChatModel {
   shortName: string
   /** True for OpenRouter free-tier models (display badge only) */
   free?:     boolean
+  /** True if this model supports file attachments */
+  supportsFiles?: boolean
 }
 
 /**
@@ -88,42 +112,57 @@ export interface ChatSession {
 }
 
 // ─── Gemini model catalogue ───────────────────────────────────────────────────
-// Keep in sync with settings/page.tsx GEMINI_CHAT_MODELS when adding models.
 
 export const GEMINI_MODELS: ChatModel[] = [
-  { id: "gemini-2.5-flash",      name: "Gemini 2.5 Flash",      provider: "gemini", shortName: "2.5 Flash"  },
-  { id: "gemini-2.5-pro",        name: "Gemini 2.5 Pro",        provider: "gemini", shortName: "2.5 Pro"    },
-  { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", provider: "gemini", shortName: "2.5 Lite"   },
-  { id: "gemini-2.5-flash-live", name: "Gemini 2.5 Flash Live", provider: "gemini", shortName: "2.5 Live"   },
+  { id: "gemini-2.5-flash",      name: "Gemini 2.5 Flash",      provider: "gemini", shortName: "2.5 Flash",  supportsFiles: true  },
+  { id: "gemini-2.5-pro",        name: "Gemini 2.5 Pro",        provider: "gemini", shortName: "2.5 Pro",    supportsFiles: true  },
+  { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", provider: "gemini", shortName: "2.5 Lite",   supportsFiles: true  },
+  { id: "gemini-2.5-flash-live", name: "Gemini 2.5 Flash Live", provider: "gemini", shortName: "2.5 Live",   supportsFiles: true  },
 ]
 
 // ─── Auto-routing pseudo-models ───────────────────────────────────────────────
-// Presented in the model picker as "smart routing" options.
-// The sendMessage handler resolves them to a real model ID before calling /api/agent.
 
 export const AUTO_ROUTING_MODELS: ChatModel[] = [
   {
-    id:        "auto",
-    name:      "Auto (Best Available)",
-    provider:  "openrouter",
-    shortName: "Auto",
-    free:      false,
+    id:           "auto",
+    name:         "Auto (Best Available)",
+    provider:     "openrouter",
+    shortName:    "Auto",
+    free:         false,
+    supportsFiles: false,
   },
   {
-    id:        "auto-free",
-    name:      "Auto (Free Models Only)",
-    provider:  "openrouter",
-    shortName: "Auto Free",
-    free:      true,
+    id:           "auto-free",
+    name:         "Auto (Free Models Only)",
+    provider:     "openrouter",
+    shortName:    "Auto Free",
+    free:         true,
+    supportsFiles: false,
   },
   {
-    id:        "auto-paid",
-    name:      "Auto (Premium Models)",
-    provider:  "openrouter",
-    shortName: "Auto Paid",
-    free:      false,
+    id:           "auto-paid",
+    name:         "Auto (Premium Models)",
+    provider:     "openrouter",
+    shortName:    "Auto Paid",
+    free:         false,
+    supportsFiles: false,
   },
 ]
+
+// ─── File-capable model detection ─────────────────────────────────────────────
+
+/** Returns true if the given model ID supports file attachments */
+export function modelSupportsFiles(modelId: string, provider?: string): boolean {
+  // All Gemini models support files
+  if (provider === "gemini") return true
+  // Gemini models accessed via OpenRouter
+  if (/gemini/i.test(modelId)) return true
+  // GPT-4o family
+  if (/gpt-4o/i.test(modelId)) return true
+  // Claude 3+ family
+  if (/claude-3|claude-sonnet|claude-opus|claude-haiku/i.test(modelId)) return true
+  return false
+}
 
 // ─── Slash commands ───────────────────────────────────────────────────────────
 
