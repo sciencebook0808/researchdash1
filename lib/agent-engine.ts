@@ -559,14 +559,13 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
               }
 
               const toolResultEvent: CheckpointEvent = {
-                type:   "tool_result",
-                tool:   chunk.toolName,
-                text:   `${TOOL_LABELS[chunk.toolName] || chunk.toolName} complete`,
-                result: chunk.output,
-                step:   stepNum,
+                type:          "tool_result",
+                tool:          chunk.toolName,
+                text:          `${TOOL_LABELS[chunk.toolName] || chunk.toolName} complete`,
+                result:        chunk.output,
+                resultPreview,
+                step:          stepNum,
               }
-              // Attach resultPreview for UI display (not part of CheckpointEvent type, but safe to extend)
-              ;(toolResultEvent as Record<string, unknown>)["resultPreview"] = resultPreview
 
               controller.enqueue(evt(toolResultEvent))
               await checkpoint(toolResultEvent)
