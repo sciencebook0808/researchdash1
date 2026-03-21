@@ -11,7 +11,7 @@
  *   - Attachment content is injected into the user message before streaming.
  */
 
-import { streamText, stepCountIs } from "ai"
+import { streamText, stepCountIs, type CoreMessage, type CoreUserMessage, type CoreAssistantMessage } from "ai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createOpenAI } from "@ai-sdk/openai"
 import { prisma } from "./prisma"
@@ -488,51 +488,60 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
     }
   }
 
-  // Build user message content using AI SDK multimodal parts.
-  // For images and PDFs, we pass the Cloudinary URL as a native file/image part.
-  // Gemini reads these directly via its multimodal API (no URL authentication needed).
-  // For text-extracted files (DOCX/CSV), the content is already in attachmentContext.
+  // Build properly-typed AI SDK v6 CoreMessage array.
+  // History messages are always string content (assistant messages from DB).
+  // The final user message may include multimodal file parts for Gemini.
   const attachmentContext = buildAttachmentContext(attachments)
   const mainText = attachmentContext ? `${message}\n${attachmentContext}` : message
 
-  type ContentPart =
-    | { type: "text";  text: string }
-    | { type: "image"; image: URL; mimeType?: string }
-    | { type: "file";  data: URL;  mimeType: string }
+  // Build user message — may include image/file parts for multimodal models
+  function buildCurrentUserMessage(text: string, atts: AgentAttachment[]): CoreUserMessage {
+    const multimodalAtts = atts.filter(
+      a => !!a.url && (a.mimeType.startsWith("image/") || a.mimeType === "application/pdf")
+    )
 
-  function buildUserContent(
-    text: string,
-    atts: AgentAttachment[]
-  ): string | ContentPart[] {
-    const multimodalAtts = atts.filter(a => {
-      if (!a.url) return false
-      const isImg = a.mimeType.startsWith("image/")
-      const isPdf = a.mimeType === "application/pdf"
-      return isImg || isPdf
-    })
-    if (!multimodalAtts.length) return text
+    if (!multimodalAtts.length) {
+      // Simple text message — no file parts needed
+      return { role: "user", content: text }
+    }
 
-    const parts: ContentPart[] = [{ type: "text", text }]
+    // Build content array with text + file/image parts
+    type UserPart =
+      | { type: "text";  text: string }
+      | { type: "image"; image: URL; mimeType?: string }
+      | { type: "file";  data: URL;  mimeType: string }
+
+    const parts: UserPart[] = [{ type: "text", text }]
+
     for (const a of multimodalAtts) {
-      const url = new URL(a.url!)
+      const url = new URL(a.url as string)
       if (a.mimeType.startsWith("image/")) {
+        // Image part: Gemini reads directly from Cloudinary URL
         parts.push({ type: "image", image: url, mimeType: a.mimeType })
       } else {
-        // PDF via Cloudinary image endpoint — Gemini reads PDF files natively
+        // PDF part: Gemini natively reads PDFs via the file part API
+        // Files are uploaded as Cloudinary `image` resource type for reliable URL access
         parts.push({ type: "file", data: url, mimeType: "application/pdf" })
       }
     }
-    return parts
+
+    return { role: "user", content: parts }
   }
 
-  const userContent = buildUserContent(mainText, attachments)
+  // Build history as properly typed CoreMessage array
+  // History from DB always has string content (no multimodal needed for past messages)
+  const historyMessages: CoreMessage[] = history.slice(-20).map(m => {
+    if (m.role === "assistant") {
+      const msg: CoreAssistantMessage = { role: "assistant", content: m.content }
+      return msg
+    }
+    const msg: CoreUserMessage = { role: "user", content: m.content }
+    return msg
+  })
 
-  const messages: Array<{ role: "user" | "assistant"; content: string | ContentPart[] }> = [
-    ...history.slice(-20).map(m => ({
-      role: m.role,
-      content: m.content as string | ContentPart[],
-    })),
-    { role: "user", content: userContent },
+  const messages: CoreMessage[] = [
+    ...historyMessages,
+    buildCurrentUserMessage(mainText, attachments),
   ]
 
   return new ReadableStream<Uint8Array>({
