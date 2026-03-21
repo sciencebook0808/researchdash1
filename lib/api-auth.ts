@@ -56,7 +56,6 @@ export async function getEffectiveUser(): Promise<EffectiveUser | null> {
       }
     }
 
-    // Fallback: Clerk user not yet in DB
     const clerkUser = await currentUser()
     if (!clerkUser) return null
 
@@ -75,8 +74,6 @@ export async function getEffectiveUser(): Promise<EffectiveUser | null> {
 }
 
 // ─── requireWriteAuth ─────────────────────────────────────────────────────────
-// For mutation endpoints: requires super_admin, admin, or developer role.
-// Returns user info in the success case so routes can use authResult.email etc.
 
 const WRITE_ROLES = new Set(["super_admin", "admin", "developer"])
 
@@ -117,8 +114,6 @@ export async function requireWriteAuth(): Promise<AuthResult> {
 }
 
 // ─── requireReadAuth ──────────────────────────────────────────────────────────
-// For read-only endpoints (SSE reconnect, job status, etc.):
-// Any authenticated session is allowed — role check is relaxed.
 
 export async function requireReadAuth(): Promise<AuthResult> {
   try {
@@ -130,7 +125,6 @@ export async function requireReadAuth(): Promise<AuthResult> {
       }
     }
 
-    // Best-effort user info — fall back to empty strings if DB unavailable
     const user = await getEffectiveUser()
     return {
       ok:      true,
@@ -148,7 +142,6 @@ export async function requireReadAuth(): Promise<AuthResult> {
 }
 
 // ─── requireAdminAuth ─────────────────────────────────────────────────────────
-// For admin-only endpoints: requires super_admin or admin role.
 
 const ADMIN_ROLES = new Set(["super_admin", "admin"])
 

@@ -15,7 +15,7 @@ import {
   Loader2, AlertCircle, CheckCircle2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { AttachedFile } from "@/types/chat"
+import type { AttachedFile, MessageAttachment } from "@/types/chat"
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
