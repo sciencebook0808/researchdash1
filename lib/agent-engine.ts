@@ -15,7 +15,10 @@ import { streamText, stepCountIs } from "ai"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createOpenAI } from "@ai-sdk/openai"
 import { prisma } from "./prisma"
-import { buildProjectScopedTools } from "./agent-tools"
+import { agentTools, buildProjectScopedTools } from "./agent-tools"
+
+// Keep agentTools in scope to preserve tree-shaking hints; suppress lint warning
+void (agentTools as unknown)
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +28,18 @@ export interface AgentMessage {
 }
 
 /** A file attachment passed along with the user's message */
+export interface CheckpointEvent {
+  type:          string
+  text?:         string
+  tool?:         string
+  args?:         Record<string, unknown>
+  result?:       unknown
+  resultPreview?: string
+  step?:         number
+  projectId?:    string
+  projectName?:  string
+}
+
 export interface AgentAttachment {
   name:     string
   mimeType: string
@@ -34,16 +49,7 @@ export interface AgentAttachment {
 }
 
 /** Payload of a single checkpoint event (mirrors the SSE wire format) */
-export interface AgentEvent {
-  type:         string
-  text?:        string
-  tool?:        string
-  args?:        Record<string, unknown>
-  result?:      unknown
-  step?:        number
-  projectId?:   string
-  projectName?: string
-}
+
 
 export interface AgentOptions {
   message:          string
@@ -60,7 +66,7 @@ export interface AgentOptions {
    * Used by the background-job system to checkpoint events to the DB.
    * May be async — the engine awaits it before proceeding.
    */
-  onCheckpoint?:    (event: AgentEvent) => Promise<void> | void
+  onCheckpoint?:    (event: CheckpointEvent) => Promise<void> | void
 }
 
 // ─── Active Agent File Loader ─────────────────────────────────────────────────
@@ -468,11 +474,11 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
 
   const encoder = new TextEncoder()
 
-  function evt(payload: AgentEvent): Uint8Array {
+  function evt(payload: CheckpointEvent): Uint8Array {
     return encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
   }
 
-  async function checkpoint(payload: AgentEvent): Promise<void> {
+  async function checkpoint(payload: CheckpointEvent): Promise<void> {
     if (onCheckpoint) {
       try {
         await onCheckpoint(payload)
@@ -497,7 +503,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
     async start(controller) {
       try {
         const initialStatus = detectWorkflowIntent(message)
-        const initEvent: AgentEvent = { type: "status", text: initialStatus, step: 0 }
+        const initEvent: CheckpointEvent = { type: "status", text: initialStatus, step: 0 }
         controller.enqueue(evt(initEvent))
         await checkpoint(initEvent)
 
@@ -521,7 +527,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
             if (chunk.type === "tool-call") {
               stepNum++
               const label = TOOL_LABELS[chunk.toolName] || `Calling ${chunk.toolName}`
-              const toolCallEvent: AgentEvent = {
+              const toolCallEvent: CheckpointEvent = {
                 type: "tool_call",
                 tool: chunk.toolName,
                 text: label,
@@ -541,7 +547,7 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
               if (chunk.toolName === "switch_project" && typeof chunk.output === "object") {
                 const output = chunk.output as Record<string, unknown>
                 if (output.__action === "SWITCH_PROJECT" && output.__projectId) {
-                  const switchEvent: AgentEvent = {
+                  const switchEvent: CheckpointEvent = {
                     type:        "project_switch",
                     projectId:   output.__projectId as string,
                     projectName: output.__projectName as string,
@@ -552,43 +558,43 @@ export function runAgent(options: AgentOptions): ReadableStream<Uint8Array> {
                 }
               }
 
-              const toolResultEvent: AgentEvent = {
+              const toolResultEvent: CheckpointEvent = {
                 type:   "tool_result",
                 tool:   chunk.toolName,
                 text:   `${TOOL_LABELS[chunk.toolName] || chunk.toolName} complete`,
                 result: chunk.output,
                 step:   stepNum,
               }
-              // Attach resultPreview for UI display (not part of AgentEvent type, but safe to extend)
+              // Attach resultPreview for UI display (not part of CheckpointEvent type, but safe to extend)
               ;(toolResultEvent as Record<string, unknown>)["resultPreview"] = resultPreview
 
               controller.enqueue(evt(toolResultEvent))
               await checkpoint(toolResultEvent)
 
-              const analysingEvent: AgentEvent = { type: "status", text: "Analysing results...", step: stepNum }
+              const analysingEvent: CheckpointEvent = { type: "status", text: "Analysing results...", step: stepNum }
               controller.enqueue(evt(analysingEvent))
               await checkpoint(analysingEvent)
             }
 
             if (chunk.type === "text-delta" && chunk.text) {
-              const textEvent: AgentEvent = { type: "text", text: chunk.text }
+              const textEvent: CheckpointEvent = { type: "text", text: chunk.text }
               controller.enqueue(evt(textEvent))
               await checkpoint(textEvent)
             }
           } catch { /* ignore serialization errors */ }
         }
 
-        const doneEvent: AgentEvent = { type: "done" }
+        const doneEvent: CheckpointEvent = { type: "done" }
         controller.enqueue(evt(doneEvent))
         await checkpoint(doneEvent)
         controller.close()
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         try {
-          const errorEvent: AgentEvent = { type: "error", text: msg }
+          const errorEvent: CheckpointEvent = { type: "error", text: msg }
           controller.enqueue(evt(errorEvent))
           await checkpoint(errorEvent)
-          const doneEvent: AgentEvent = { type: "done" }
+          const doneEvent: CheckpointEvent = { type: "done" }
           controller.enqueue(evt(doneEvent))
           await checkpoint(doneEvent)
           controller.close()

@@ -22,7 +22,7 @@
 
 import { NextResponse }     from "next/server"
 import { requireWriteAuth } from "@/lib/api-auth"
-import { runAgent, AgentEvent, AgentAttachment } from "@/lib/agent-engine"
+import { runAgent, CheckpointEvent, AgentAttachment } from "@/lib/agent-engine"
 import { createAgentJob, appendJobEvent, finalizeAgentJob } from "@/lib/agent-job"
 
 export const maxDuration = 300 // 5 minutes
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     let sequence = 0
     let accumulatedContent = ""
 
-    const onCheckpoint = async (event: AgentEvent): Promise<void> => {
+    const onCheckpoint = async (event: CheckpointEvent): Promise<void> => {
       if (!job) return
 
       const seq = sequence++
